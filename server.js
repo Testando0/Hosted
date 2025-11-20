@@ -36,10 +36,12 @@ io.on('connection', (socket) => {
     // Recebe comandos do input do site e envia para o Bot (STDIN)
     socket.on('terminal-input', (cmd) => {
         if (currentBotProcess && !currentBotProcess.killed) {
-            // Escreve no console do bot
-            currentBotProcess.stdin.write(cmd + '\n');
-            // Mostra no log do site que você digitou
-            io.emit('log-message', { type: 'input', text: `$ ${cmd}`, time: getTime() });
+            try {
+                currentBotProcess.stdin.write(cmd + '\n');
+                io.emit('log-message', { type: 'input', text: `$ ${cmd}`, time: getTime() });
+            } catch (e) {
+                io.emit('log-message', { type: 'error', text: 'Erro ao enviar comando (Processo morto?)', time: getTime() });
+            }
         } else {
             io.emit('log-message', { type: 'error', text: 'Nenhum bot rodando para receber comandos.', time: getTime() });
         }
@@ -61,6 +63,7 @@ app.post('/deploy/zip', upload.single('file'), async (req, res) => {
     
     if (!req.file) return res.status(400).json({ error: 'Arquivo ZIP obrigatório.' });
 
+    // Executa a sequência
     await runDeploySequence(startCommand, installDeps === 'true', async () => {
         systemLog('info', 'Extraindo pacote ZIP...');
         const zip = new AdmZip(path.join(UPLOAD_DIR, 'bot_package.zip'));
@@ -85,14 +88,23 @@ app.post('/deploy/git', async (req, res) => {
 });
 
 
-// Lógica Central de Deploy
+// --- LÓGICA CENTRAL DE DEPLOY (CORRIGIDA) ---
 async function runDeploySequence(startCmd, shouldInstall, fileHandler) {
     try {
-        // 1. Matar processo antigo
+        // 1. Matar processo antigo BLINDADO
         if (currentBotProcess) {
-            systemLog('warn', 'Encerrando instância ativa...');
-            process.kill(-currentBotProcess.pid); // Mata arvore de processos se possível
-            try { currentBotProcess.kill(); } catch(e){}
+            systemLog('warn', 'Encerrando instância anterior...');
+            try {
+                // Tenta matar o processo e seus filhos
+                process.kill(-currentBotProcess.pid);
+            } catch (e) {
+                // Se o erro for ESRCH, significa que já estava morto. Ignoramos.
+                if (e.code !== 'ESRCH') {
+                    systemLog('error', `Erro ao matar processo: ${e.message}`);
+                } else {
+                    systemLog('info', 'Instância anterior já estava encerrada (Zombie process cleaned).');
+                }
+            }
             currentBotProcess = null;
         }
 
@@ -105,8 +117,10 @@ async function runDeploySequence(startCmd, shouldInstall, fileHandler) {
 
         // 4. Preparar comando final
         let finalCommand = startCmd;
+        
+        // Nota: No Windows 'npm' é cmd, no Linux é direto. O Render é Linux.
         if (shouldInstall) {
-            systemLog('info', 'Configuração de dependências ativada (npm install).');
+            systemLog('info', 'Instalando dependências (npm install)... aguarde.');
             finalCommand = `npm install && ${startCmd}`;
         }
 
@@ -115,29 +129,39 @@ async function runDeploySequence(startCmd, shouldInstall, fileHandler) {
 
     } catch (error) {
         systemLog('error', `FALHA CRÍTICA NO DEPLOY: ${error.message}`);
+        console.error(error);
     }
 }
 
 function startBotProcess(command) {
     systemLog('success', `Inicializando Protocolo: ${command}`);
 
-    // Spawn com shell true para permitir "&&" e pipes
+    // Spawn com shell true
     currentBotProcess = spawn(command, {
         cwd: BOT_DIR,
         shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'] // Permite input e output
+        stdio: ['pipe', 'pipe', 'pipe'] 
     });
 
-    currentBotProcess.stdout.on('data', (data) => {
-        io.emit('log-message', { type: 'info', text: data.toString().trim(), time: getTime() });
-    });
+    if (currentBotProcess.stdout) {
+        currentBotProcess.stdout.on('data', (data) => {
+            io.emit('log-message', { type: 'info', text: data.toString().trim(), time: getTime() });
+        });
+    }
 
-    currentBotProcess.stderr.on('data', (data) => {
-        io.emit('log-message', { type: 'error', text: data.toString().trim(), time: getTime() });
-    });
+    if (currentBotProcess.stderr) {
+        currentBotProcess.stderr.on('data', (data) => {
+            const msg = data.toString().trim();
+            // Filtra avisos chatos do NPM para não poluir o vermelho
+            if(!msg.includes('npm WARN') && !msg.includes('npm notice')) {
+                io.emit('log-message', { type: 'error', text: msg, time: getTime() });
+            }
+        });
+    }
 
     currentBotProcess.on('close', (code) => {
         systemLog('warn', `Processo finalizado. Código: ${code}`);
+        // Não definimos null aqui imediatamente para permitir logs finais
     });
 }
 
