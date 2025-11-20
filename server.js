@@ -13,17 +13,19 @@ const { spawn } = require('child_process');
 const UPLOAD_DIR = path.join(__dirname, 'temp_uploads');
 const BOT_DIR = path.join(__dirname, 'user_bot');
 
-// Garante pastas limpas
 fs.ensureDirSync(UPLOAD_DIR);
 fs.ensureDirSync(BOT_DIR);
 
-// Configuração Multer
+// Configuração Multer (ZIP)
 const storageZip = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => cb(null, 'bot_package.zip')
 });
 const uploadZip = multer({ storage: storageZip });
 
+// Configuração Multer (Arquivos Avulsos) - Destination deve ser dinâmica
+// Usamos uma pasta temporária e movemos depois, ou configuramos o BOT_DIR e ajustamos na rota.
+// Vamos manter o BOT_DIR e mover no frontend/backend
 const storageFile = multer.diskStorage({
     destination: (req, file, cb) => cb(null, BOT_DIR),
     filename: (req, file, cb) => cb(null, file.originalname)
@@ -34,11 +36,123 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 let currentBotProcess = null;
-let logHistory = []; // Buffer para guardar logs recentes
+let logHistory = [];
+
+// --- SEGURANÇA DE ARQUIVOS ---
+/**
+ * Garante que o caminho solicitado está DENTRO da pasta BOT_DIR.
+ * @param {string} targetPath - Caminho relativo fornecido pelo cliente (ex: 'src/config.json' ou '../server.js')
+ * @returns {string} Caminho absoluto seguro.
+ */
+function getSafeAbsolutePath(targetPath) {
+    if (typeof targetPath !== 'string') targetPath = '';
+    
+    // Resolve o caminho, tratando sequências como '..'
+    const resolvedPath = path.resolve(BOT_DIR, targetPath);
+    
+    // ⚠️ CRÍTICO: Verifica se o caminho resolvido começa com a pasta base
+    if (!resolvedPath.startsWith(BOT_DIR)) {
+        throw new Error("Acesso negado: Tentativa de Path Traversal.");
+    }
+    return resolvedPath;
+}
+
+// --- ROTAS DO FILE MANAGER (ATUALIZADAS) ---
+
+// 1. Listar Arquivos
+app.get('/files/list', async (req, res) => {
+    try {
+        // Recebe o caminho a ser listado (ex: '/src' ou '/')
+        const clientPath = req.query.path || '/'; 
+        const targetDir = getSafeAbsolutePath(clientPath);
+        
+        if(!fs.existsSync(targetDir)) return res.status(404).json({ error: 'Diretório não encontrado.' });
+        if(!fs.statSync(targetDir).isDirectory()) return res.status(400).json({ error: 'Caminho não é um diretório.' });
+
+        const files = await fs.readdir(targetDir);
+        const fileData = [];
+        
+        for (const file of files) {
+            // Cria o caminho absoluto para o stat
+            const filePath = path.join(targetDir, file);
+            
+            try {
+                const stats = await fs.stat(filePath);
+                fileData.push({
+                    name: file,
+                    isDir: stats.isDirectory(),
+                    size: (stats.size / 1024).toFixed(1) + ' KB'
+                });
+            } catch(e) {}
+        }
+        
+        // Ordena: Pastas primeiro, depois arquivos
+        fileData.sort((a, b) => (a.isDir === b.isDir) ? 0 : a.isDir ? -1 : 1);
+        
+        res.json(fileData);
+    } catch (e) {
+        addLog('error', `Erro ao listar: ${e.message}`);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 2. Deletar Arquivo
+app.delete('/files/delete', async (req, res) => {
+    try {
+        // Recebe o nome do arquivo e o caminho atual onde ele está
+        const { name, currentPath } = req.body;
+        if (!name || !currentPath) return res.status(400).json({ error: 'Caminho ou nome inválido' });
+
+        // Constrói o caminho completo a ser deletado (ex: user_bot/src/index.js)
+        const fullPathToDelete = path.join(currentPath, name);
+        const targetPath = getSafeAbsolutePath(fullPathToDelete);
+        
+        // Proteção: Não deletar a pasta raiz do bot
+        if (targetPath === BOT_DIR) throw new Error("Não é possível deletar a raiz.");
+
+        await fs.remove(targetPath);
+        addLog('warn', `Deletado: ${fullPathToDelete}`);
+        res.json({ success: true });
+    } catch (e) {
+        addLog('error', `Erro ao deletar: ${e.message}`);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 3. Upload de Arquivo Único (Atualizado para mover para a pasta correta)
+app.post('/files/upload', uploadFile.single('file'), async (req, res) => {
+    if (!req.file || !req.body.currentPath) {
+        await fs.remove(req.file ? req.file.path : ''); // Limpa o arquivo se der erro
+        return res.status(400).json({ error: 'Nenhum arquivo enviado ou caminho faltante.' });
+    }
+    
+    try {
+        const clientPath = req.body.currentPath; // Caminho de destino (ex: '/src')
+        const targetDir = getSafeAbsolutePath(clientPath);
+
+        // O arquivo foi salvo temporariamente em BOT_DIR/nome-original. Agora movemos para a pasta correta.
+        const originalFilePath = path.join(BOT_DIR, req.file.originalname);
+        const finalFilePath = path.join(targetDir, req.file.originalname);
+        
+        // Usa fs-extra para mover (substitui se já existir)
+        await fs.move(originalFilePath, finalFilePath, { overwrite: true });
+
+        addLog('info', `Upload: ${finalFilePath}`);
+        res.json({ success: true });
+
+    } catch (e) {
+        addLog('error', `Erro no upload: ${e.message}`);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- FUNÇÕES AUXILIARES E DEPLOY (MANTIDAS) ---
+
+// Código para Socket.IO, Logs (addLog), KillBot, Deploy ZIP/GIT, DeployFlow, StartBot...
+// ... (mantenha todo o restante do código do server.js V5.0 aqui)
 
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
-    // Envia histórico recente ao conectar (útil para mobile que recarrega)
     socket.emit('log-history', logHistory);
 
     socket.on('terminal-input', (cmd) => {
@@ -57,89 +171,32 @@ io.on('connection', (socket) => {
 
 function getTime() { return new Date().toLocaleTimeString('pt-BR'); }
 
-// Função central de logs com histórico
 function addLog(type, text) {
     const logEntry = { type, text, time: getTime() };
     
-    // Guarda os últimos 50 logs
     if (logHistory.length > 50) logHistory.shift();
     logHistory.push(logEntry);
 
-    // Envia para todos conectados
     io.emit('log-message', logEntry);
     
-    // Console do servidor (Render logs)
     if(type === 'error' || type === 'warn' || type === 'success') {
         console.log(`[${type.toUpperCase()}] ${text}`);
     }
 }
 
-// --- GERENCIAMENTO DE PROCESSOS (CORREÇÃO CRÍTICA) ---
 async function killBot() {
     if (currentBotProcess) {
         addLog('warn', 'Encerrando processo anterior...');
         try {
-            // Tenta matar o grupo de processos (PID negativo)
-            // Só funciona se spawned com detached: true
             process.kill(-currentBotProcess.pid);
         } catch (e) {
-            // Se der erro, tenta kill normal
             try { currentBotProcess.kill(); } catch (err) {}
         }
         currentBotProcess = null;
-        // Pequeno delay para garantir liberação de porta
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
 }
 
-// --- ROTAS ---
-
-// Listar Arquivos
-app.get('/files/list', async (req, res) => {
-    try {
-        if(!fs.existsSync(BOT_DIR)) fs.mkdirSync(BOT_DIR);
-        const files = await fs.readdir(BOT_DIR);
-        const fileData = [];
-        for (const file of files) {
-            try {
-                const stats = await fs.stat(path.join(BOT_DIR, file));
-                fileData.push({
-                    name: file,
-                    isDir: stats.isDirectory(),
-                    size: (stats.size / 1024).toFixed(1) + ' KB'
-                });
-            } catch(e) {}
-        }
-        fileData.sort((a, b) => (a.isDir === b.isDir) ? 0 : a.isDir ? -1 : 1);
-        res.json(fileData);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Deletar Arquivo
-app.delete('/files/delete', async (req, res) => {
-    try {
-        const { name } = req.body;
-        if (!name) return res.status(400).json({ error: 'Nome inválido' });
-        const target = path.join(BOT_DIR, name);
-        if (!target.startsWith(BOT_DIR)) throw new Error("Acesso negado."); // Security check
-        
-        await fs.remove(target);
-        addLog('warn', `Arquivo deletado: ${name}`);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Upload Arquivo Único
-app.post('/files/upload', uploadFile.single('file'), (req, res) => {
-    if (req.file) {
-        addLog('info', `Arquivo recebido: ${req.file.originalname}`);
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ error: 'Erro no upload.' });
-    }
-});
-
-// Deploy ZIP
 app.post('/deploy/zip', uploadZip.single('file'), async (req, res) => {
     let { startCommand, installDeps } = req.body;
     
@@ -153,7 +210,6 @@ app.post('/deploy/zip', uploadZip.single('file'), async (req, res) => {
     res.json({ success: true });
 });
 
-// Deploy Git
 app.post('/deploy/git', async (req, res) => {
     let { repoUrl, startCommand, installDeps } = req.body;
     if (!repoUrl) return res.status(400).json({ error: 'URL Git vazia.' });
@@ -165,23 +221,20 @@ app.post('/deploy/git', async (req, res) => {
     res.json({ success: true });
 });
 
-// --- FLUXO DE DEPLOY E START ---
 async function deployFlow(startCmd, shouldInstall, fileHandler) {
     try {
-        startCmd = String(startCmd).trim(); // Força string
+        startCmd = String(startCmd).trim();
         if(!startCmd) startCmd = "node index.js";
 
-        await killBot(); // Mata o antigo
+        await killBot();
         
         addLog('warn', 'Limpando diretório e preparando...');
         await fs.emptyDir(BOT_DIR);
         
-        await fileHandler(); // Extrai ou Clona
+        await fileHandler();
 
         let finalCmd = startCmd;
         
-        // Se pedir install, concatenamos com &&
-        // Isso garante que o start só roda se o install der certo
         if (shouldInstall) {
             addLog('info', 'Executando npm install (aguarde)...');
             finalCmd = `npm install && ${startCmd}`;
@@ -197,7 +250,6 @@ async function deployFlow(startCmd, shouldInstall, fileHandler) {
 function startBot(command) {
     addLog('success', `Iniciando Processo: ${command}`);
 
-    // ATENÇÃO: detached: true é essencial para conseguir matar o processo depois
     currentBotProcess = spawn(command, {
         cwd: BOT_DIR,
         shell: true,
@@ -211,11 +263,10 @@ function startBot(command) {
 
     currentBotProcess.stderr.on('data', (data) => {
         const msg = data.toString().trim();
-        // Ignora warnings irrelevantes
         if (!msg.includes('npm WARN') && !msg.includes('npm notice') && !msg.includes('Cloning into')) {
             addLog('error', msg);
         } else {
-            addLog('input', msg); // Mostra warnings como cinza/input
+            addLog('input', msg);
         }
     });
 
