@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C2 BOT HOST /// DEPLOY STATION</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* --- ESTILOS GERAIS --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #050505; color: #00ffcc;
+            font-family: 'Courier New', Courier, monospace;
+            height: 100vh; overflow: hidden;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+
+        /* --- PAINEL DE CONTROLE (UPLOAD) --- */
+        .control-panel {
+            width: 90%;
+            margin-bottom: 15px;
+            padding: 15px;
+            border: 1px solid #333;
+            background: #0a0a0a;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.05);
+            display: flex; gap: 10px; align-items: center;
+            z-index: 10;
+        }
+
+        input[type="text"] {
+            background: #000; border: 1px solid #333; color: #00ffcc;
+            padding: 10px; font-family: inherit; flex: 1;
+        }
+        
+        /* Estilo do Input File */
+        .file-input-wrapper {
+            position: relative; overflow: hidden; display: inline-block;
+        }
+        .btn {
+            border: 1px solid #00ffcc; background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc; padding: 10px 20px; cursor: pointer;
+            font-family: inherit; font-weight: bold; text-transform: uppercase;
+            transition: 0.3s;
+        }
+        .btn:hover { background: #00ffcc; color: #000; box-shadow: 0 0 15px #00ffcc; }
+        
+        input[type="file"] {
+            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer;
+        }
+
+        /* --- TERMINAL --- */
+        .terminal-window {
+            width: 90%; height: 70%; border: 1px solid #333;
+            background-color: rgba(10, 10, 10, 0.95);
+            display: flex; flex-direction: column; position: relative;
+        }
+        .header {
+            padding: 10px; background: #0f0f0f; border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; font-size: 0.8rem;
+        }
+        .log-container {
+            flex: 1; padding: 20px; overflow-y: auto;
+            font-size: 0.9rem; color: #aaddd6;
+        }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #333; }
+        
+        .log-entry { margin-bottom: 4px; word-wrap: break-word; }
+        .timestamp { color: #555; margin-right: 8px; }
+        .info { color: #aaddd6; }
+        .warn { color: #ffcc00; }
+        .error { color: #ff0055; }
+        .success { color: #00ff66; }
+
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <div class="file-input-wrapper btn">
+            ESCOLHER .ZIP
+            <input type="file" id="botFile" accept=".zip">
+        </div>
+        <span id="fileName" style="font-size: 0.8rem; color: #555;">Nenhum arquivo</span>
+        
+        <input type="text" id="startCmd" placeholder="Comando de Início (ex: node index.js)" value="node index.js">
+        
+        <button class="btn" onclick="deployBot()">UPLOAD & START</button>
+    </div>
+
+    <div class="terminal-window">
+        <div class="header">
+            <span>SYSTEM MONITOR /// LIVE LOGS</span>
+            <span id="status">AGUARDANDO COMANDO...</span>
+        </div>
+        <div class="log-container" id="terminalLogs"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const logContainer = document.getElementById('terminalLogs');
+        const fileInput = document.getElementById('botFile');
+        const statusSpan = document.getElementById('status');
+
+        // Atualiza nome do arquivo ao selecionar
+        fileInput.addEventListener('change', function() {
+            document.getElementById('fileName').innerText = this.files[0] ? this.files[0].name : "Nenhum arquivo";
+        });
+
+        // Recebe logs do servidor
+        socket.on('log-message', (data) => {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerHTML = `<span class="timestamp">[${data.time}]</span> <span class="${data.type}">${data.text}</span>`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        });
+
+        // Função de Upload
+        async function deployBot() {
+            const file = fileInput.files[0];
+            const cmd = document.getElementById('startCmd').value;
+
+            if (!file) return alert("Selecione um arquivo .zip!");
+            if (!cmd) return alert("Digite o comando de início!");
+
+            const formData = new FormData();
+            formData.append('botFile', file);
+            formData.append('startCommand', cmd);
+
+            statusSpan.innerText = "ENVIANDO DADOS...";
+            statusSpan.style.color = "#ffcc00";
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusSpan.innerText = "BOT RODANDO";
+                    statusSpan.style.color = "#00ff66";
+                } else {
+                    statusSpan.innerText = "ERRO NO DEPLOY";
+                    statusSpan.style.color = "#ff0055";
+                    alert("Erro: " + result.error);
+                }
+            } catch (e) {
+                alert("Erro na conexão: " + e);
+            }
+        }
+    </script>
+</body>
+</html>
