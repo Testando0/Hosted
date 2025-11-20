@@ -3,199 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RED PROTOCOL /// HOST C2</title>
+    <title>RED PROTOCOL /// C2</title>
     <script src="/socket.io/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        /* --- CORE THEME: RED & BLACK --- */
+        /* --- CORE THEME --- */
         :root {
-            --bg-color: #050505;
-            --panel-bg: #0a0a0a;
-            --primary: #ff0033; /* Vermelho Laser */
-            --secondary: #590012; /* Vinho Escuro */
-            --text-main: #ffe6ea;
-            --text-dim: #884444;
-            --scanline: rgba(255, 0, 51, 0.05);
+            --bg: #050505; --panel: #0a0a0a;
+            --primary: #ff0033; --sec: #590012;
+            --text: #ffe6ea; --dim: #884444;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        body { background: var(--bg); color: var(--primary); font-family: 'Fira Code', monospace; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         
-        body {
-            background-color: var(--bg-color);
-            color: var(--primary);
-            font-family: 'Fira Code', monospace;
-            height: 100vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
+        /* GRID BACKGROUND */
+        body::after { content: ""; position: absolute; width: 100%; height: 100%; background: linear-gradient(rgba(10,0,0,0.95), var(--sec)), linear-gradient(90deg, rgba(20,0,0,1), transparent); background-size: 4px 4px; opacity: 0.15; z-index: -1; pointer-events: none; }
 
-        /* Background Grid Effect */
-        body::after {
-            content: ""; position: absolute; top:0; left:0; width: 100vw; height: 100vh;
-            background: linear-gradient(rgba(10,0,0,0.9) 90%, var(--secondary) 100%),
-                        linear-gradient(90deg, rgba(20,0,0,1) 50%, transparent 50%);
-            background-size: 100% 2px, 40px 100%;
-            opacity: 0.2; z-index: -1; pointer-events: none;
-        }
-
-        /* --- HEADER --- */
-        header {
-            height: 60px;
-            background: var(--panel-bg);
-            border-bottom: 2px solid var(--secondary);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            box-shadow: 0 5px 20px rgba(255, 0, 51, 0.1);
-        }
-
-        .brand { font-size: 1.2rem; font-weight: 700; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary); }
-        
-        .btn-icon {
-            background: transparent; border: 1px solid var(--secondary);
-            color: var(--primary); padding: 8px; cursor: pointer;
-            border-radius: 4px; transition: 0.3s;
-        }
+        /* HEADER */
+        header { height: 60px; background: var(--panel); border-bottom: 2px solid var(--sec); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-shadow: 0 5px 20px rgba(255,0,51,0.1); }
+        .brand { font-weight: 700; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary); }
+        .btn-icon { background: transparent; border: 1px solid var(--sec); color: var(--primary); padding: 8px; cursor: pointer; border-radius: 4px; transition: 0.3s; }
         .btn-icon:hover { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
 
-        /* --- TERMINAL AREA --- */
-        .terminal-container {
-            flex: 1;
-            padding: 15px;
-            overflow-y: auto;
-            background: rgba(0,0,0,0.6);
-            display: flex;
-            flex-direction: column;
-            font-size: 0.9rem;
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #000; }
-        ::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 2px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
-
+        /* TERMINAL */
+        .terminal-container { flex: 1; padding: 15px; overflow-y: auto; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; font-size: 0.9rem; }
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: var(--sec); }
         .log { margin-bottom: 4px; word-break: break-all; }
-        .ts { color: var(--text-dim); margin-right: 10px; font-size: 0.8rem; }
-        .type-info { color: var(--text-main); }
-        .type-warn { color: #ffcc00; }
-        .type-error { color: #ff3333; text-shadow: 0 0 5px #ff0000; font-weight: bold; }
-        .type-success { color: #00ff66; }
-        .type-input { color: #aaa; font-style: italic; }
+        .ts { color: var(--dim); margin-right: 10px; font-size: 0.8rem; }
+        .type-info { color: var(--text); } .type-warn { color: #ffcc00; } .type-error { color: #ff3333; font-weight: bold; } .type-success { color: #00ff66; } .type-input { color: #aaa; font-style: italic; }
 
-        /* --- INPUT BAR (Pterodactyl Style) --- */
-        .command-bar {
-            background: var(--panel-bg);
-            border-top: 1px solid var(--secondary);
-            padding: 15px;
-            display: flex;
-            align-items: center;
-        }
-
-        .cmd-prompt { margin-right: 10px; font-weight: bold; }
-        
-        #cmdInput {
-            flex: 1; background: #000; border: 1px solid #333;
-            color: var(--primary); padding: 12px; font-family: inherit;
-            border-radius: 4px;
-        }
+        /* INPUT BAR */
+        .command-bar { background: var(--panel); border-top: 1px solid var(--sec); padding: 15px; display: flex; align-items: center; }
+        #cmdInput { flex: 1; background: #000; border: 1px solid #333; color: var(--primary); padding: 12px; font-family: inherit; margin-left: 10px; }
         #cmdInput:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(255,0,51,0.2); }
 
-        /* --- SETTINGS MODAL --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); backdrop-filter: blur(3px);
-            display: none; justify-content: center; align-items: center; z-index: 100;
-        }
-
-        .modal {
-            width: 500px; background: #0f0f0f; border: 1px solid var(--primary);
-            box-shadow: 0 0 30px rgba(255,0,51,0.2); padding: 20px;
-            border-radius: 5px; position: relative;
-        }
-
-        .modal h2 { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        /* MODAL */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; justify-content: center; align-items: center; z-index: 100; backdrop-filter: blur(5px); }
+        .modal { width: 700px; max-height: 80vh; background: #0f0f0f; border: 1px solid var(--primary); box-shadow: 0 0 30px rgba(255,0,51,0.2); padding: 20px; display: flex; flex-direction: column; position: relative; }
+        .close-modal { position: absolute; top: 15px; right: 15px; color: #555; cursor: pointer; font-size: 1.5rem; }
         
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .tab {
-            flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333;
-            color: #666; cursor: pointer; text-align: center;
-        }
-        .tab.active { border-color: var(--primary); color: var(--primary); background: rgba(255,0,51,0.1); }
+        /* TABS */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .tab { padding: 8px 15px; cursor: pointer; color: #666; border: 1px solid transparent; transition: 0.3s; font-size: 0.9rem; }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--primary); border: 1px solid var(--primary); background: rgba(255,0,51,0.05); }
+        
+        .deploy-area { display: none; }
+        .deploy-area.show { display: block; }
 
+        /* FORMS */
         .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.8rem; }
-        .form-input { width: 100%; padding: 10px; background: #000; border: 1px solid #333; color: white; }
-        
-        .checkbox-group { display: flex; align-items: center; gap: 10px; margin: 15px 0; cursor: pointer; }
-        .checkbox-group input { width: 16px; height: 16px; accent-color: var(--primary); }
-
-        .btn-action {
-            width: 100%; padding: 12px; background: var(--primary); color: #000;
-            border: none; font-weight: bold; cursor: pointer; transition: 0.2s;
-        }
+        .form-input { width: 100%; padding: 10px; background: #000; border: 1px solid #333; color: white; font-family: inherit; }
+        .btn-action { width: 100%; padding: 12px; background: var(--primary); color: #000; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-action:hover { background: white; box-shadow: 0 0 15px white; }
         
-        .close-modal { position: absolute; top: 15px; right: 15px; color: #555; cursor: pointer; font-size: 1.5rem; }
+        /* FILE MANAGER STYLES */
+        .file-list { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 10px; }
+        .file-list th { text-align: left; color: var(--dim); padding: 5px; border-bottom: 1px solid var(--sec); }
+        .file-list td { padding: 8px 5px; border-bottom: 1px solid #222; color: #ddd; }
+        .file-list tr:hover { background: rgba(255,0,51,0.05); }
+        .icon-dir { color: #ffcc00; margin-right: 5px; }
+        .icon-file { color: var(--primary); margin-right: 5px; }
+        
+        .btn-trash { background: none; border: none; color: #555; cursor: pointer; font-size: 1rem; transition: 0.2s; }
+        .btn-trash:hover { color: #ff0033; }
+
+        .file-actions { display: flex; gap: 10px; margin-bottom: 15px; }
+        .btn-small { padding: 5px 10px; border: 1px solid var(--sec); background: #000; color: var(--primary); cursor: pointer; font-size: 0.8rem; }
+        .btn-small:hover { background: var(--sec); }
 
     </style>
 </head>
 <body>
 
     <header>
-        <div class="brand">RED PROTOCOL <span style="font-size:0.7em; color:#555;">:: V3.0</span></div>
+        <div class="brand">RED PROTOCOL <span style="font-size:0.7em; color:#555;">:: V4.0</span></div>
         <button class="btn-icon" onclick="openSettings()">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
     </header>
 
-    <div class="terminal-container" id="logs">
-        </div>
+    <div class="terminal-container" id="logs"></div>
 
     <div class="command-bar">
-        <span class="cmd-prompt">user@server:~$</span>
-        <input type="text" id="cmdInput" placeholder="Enviar comando para o console..." autocomplete="off">
+        <span>user@server:~$</span>
+        <input type="text" id="cmdInput" placeholder="Enviar comando..." autocomplete="off">
     </div>
 
     <div class="modal-overlay" id="settingsModal">
         <div class="modal">
             <span class="close-modal" onclick="closeSettings()">&times;</span>
-            <h2>DEPLOY CONFIGURATION</h2>
+            <h3 style="border-bottom: 1px solid #333; padding-bottom:10px; margin-bottom:15px;">SYSTEM CONFIG</h3>
             
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('zip')">UPLOAD ZIP</div>
-                <div class="tab" onclick="switchTab('git')">GITHUB URL</div>
+                <div class="tab active" onclick="switchTab('zip', this)">DEPLOY ZIP</div>
+                <div class="tab" onclick="switchTab('git', this)">GITHUB</div>
+                <div class="tab" onclick="switchTab('files', this)">ARQUIVOS</div>
             </div>
 
-            <div class="form-group">
-                <label>Comando de Início</label>
-                <input type="text" id="startCommand" class="form-input" value="node index.js" placeholder="ex: node index.js">
+            <div id="area-zip" class="deploy-area show">
+                <div class="form-group"><label>Start Command</label><input type="text" id="startCmdZip" class="form-input" value="node index.js"></div>
+                <label style="display:flex; gap:10px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" id="depsZip" checked><span>Rodar 'npm install'</span></label>
+                <input type="file" id="zipFile" class="form-input" accept=".zip">
+                <button class="btn-action" style="margin-top:15px;" onclick="deployZip()">UPLOAD & START</button>
             </div>
 
-            <label class="checkbox-group">
-                <input type="checkbox" id="installDeps" checked>
-                <span>Executar 'npm install' antes de iniciar?</span>
-            </label>
+            <div id="area-git" class="deploy-area">
+                <div class="form-group"><label>Git URL</label><input type="text" id="repoUrl" class="form-input" placeholder="https://github.com/..."></div>
+                <div class="form-group"><label>Start Command</label><input type="text" id="startCmdGit" class="form-input" value="node index.js"></div>
+                <label style="display:flex; gap:10px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" id="depsGit" checked><span>Rodar 'npm install'</span></label>
+                <button class="btn-action" onclick="deployGit()">CLONE & START</button>
+            </div>
 
-            <div id="area-zip" class="deploy-area">
-                <div class="form-group">
-                    <label>Arquivo do Bot (.zip)</label>
-                    <input type="file" id="zipFile" class="form-input" accept=".zip" style="padding: 5px;">
+            <div id="area-files" class="deploy-area" style="height: 400px; display:none; flex-direction: column;">
+                <div class="file-actions">
+                    <button class="btn-small" onclick="loadFiles()">↻ REFRESH</button>
+                    <button class="btn-small" onclick="document.getElementById('uploadSingle').click()">↑ UPLOAD ARQUIVO</button>
+                    <input type="file" id="uploadSingle" style="display:none" onchange="uploadSingleFile(this)">
                 </div>
-                <button class="btn-action" onclick="deployZip()">INICIAR UPLOAD</button>
-            </div>
-
-            <div id="area-git" class="deploy-area" style="display: none;">
-                <div class="form-group">
-                    <label>URL do Repositório Git (Público)</label>
-                    <input type="text" id="repoUrl" class="form-input" placeholder="https://github.com/usuario/repo.git">
+                
+                <div style="flex:1; overflow-y: auto; border: 1px solid #333; padding: 5px;">
+                    <table class="file-list">
+                        <thead><tr><th>Nome</th><th>Tamanho</th><th style="text-align:right">Ação</th></tr></thead>
+                        <tbody id="fileTableBody">
+                            </tbody>
+                    </table>
                 </div>
-                <button class="btn-action" onclick="deployGit()">CLONAR & INICIAR</button>
             </div>
 
         </div>
@@ -204,9 +137,8 @@
     <script>
         const socket = io();
         const logDiv = document.getElementById('logs');
-        const cmdInput = document.getElementById('cmdInput');
-
-        // --- LOGIC DE SOCKET ---
+        
+        // Logs System
         socket.on('log-message', (data) => {
             const p = document.createElement('div');
             p.className = `log type-${data.type}`;
@@ -215,65 +147,115 @@
             logDiv.scrollTop = logDiv.scrollHeight;
         });
 
-        // --- ENVIO DE COMANDOS (Enter) ---
-        cmdInput.addEventListener('keypress', (e) => {
+        // Command Input
+        document.getElementById('cmdInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                const cmd = cmdInput.value;
-                if(cmd.trim()) {
-                    socket.emit('terminal-input', cmd);
-                    cmdInput.value = '';
-                }
+                socket.emit('terminal-input', e.target.value);
+                e.target.value = '';
             }
         });
 
-        // --- MODAL LOGIC ---
+        // UI Logic
         function openSettings() { document.getElementById('settingsModal').style.display = 'flex'; }
         function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
-        
-        function switchTab(mode) {
+
+        function switchTab(id, tabElement) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.deploy-area').forEach(a => a.style.display = 'none');
+            document.querySelectorAll('.deploy-area').forEach(a => {
+                a.classList.remove('show');
+                a.style.display = 'none'; // Force hide
+            });
             
-            if(mode === 'zip') {
-                document.querySelector('.tab:first-child').classList.add('active');
-                document.getElementById('area-zip').style.display = 'block';
-            } else {
-                document.querySelector('.tab:last-child').classList.add('active');
-                document.getElementById('area-git').style.display = 'block';
+            tabElement.classList.add('active');
+            const area = document.getElementById(`area-${id}`);
+            area.classList.add('show');
+            area.style.display = (id === 'files') ? 'flex' : 'block'; // Flex for file manager layout
+
+            if(id === 'files') loadFiles();
+        }
+
+        // --- FILE MANAGER LOGIC ---
+        async function loadFiles() {
+            const tbody = document.getElementById('fileTableBody');
+            tbody.innerHTML = '<tr><td colspan="3">Carregando...</td></tr>';
+            
+            try {
+                const res = await fetch('/files/list');
+                const files = await res.json();
+                
+                tbody.innerHTML = '';
+                if(files.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3">Nenhum arquivo encontrado.</td></tr>';
+                    return;
+                }
+
+                files.forEach(f => {
+                    const icon = f.isDir ? '<span class="icon-dir">DIR</span>' : '<span class="icon-file">FILE</span>';
+                    const deleteBtn = `<button class="btn-trash" onclick="deleteFile('${f.name}')">🗑</button>`;
+                    
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${icon} ${f.name}</td>
+                        <td>${f.size || '-'}</td>
+                        <td style="text-align:right">${deleteBtn}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="3" style="color:red">Erro ao carregar.</td></tr>`;
             }
         }
 
-        // --- DEPLOY FUNCTIONS ---
-        async function deployZip() {
-            const file = document.getElementById('zipFile').files[0];
-            const startCmd = document.getElementById('startCommand').value;
-            const installDeps = document.getElementById('installDeps').checked;
+        async function deleteFile(name) {
+            if(!confirm(`Tem certeza que deseja deletar: ${name}?`)) return;
+            
+            await fetch('/files/delete', {
+                method: 'DELETE',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name })
+            });
+            loadFiles(); // Reload list
+        }
 
-            if(!file) return alert('Selecione um arquivo ZIP.');
+        async function uploadSingleFile(input) {
+            const file = input.files[0];
+            if(!file) return;
 
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('startCommand', startCmd);
-            formData.append('installDeps', installDeps);
+
+            // Show generic uploading status (via logs mostly)
+            await fetch('/files/upload', { method: 'POST', body: formData });
+            input.value = ''; // Reset input
+            loadFiles(); // Refresh list
+        }
+
+        // --- DEPLOY LOGIC ---
+        async function deployZip() {
+            const file = document.getElementById('zipFile').files[0];
+            if(!file) return alert('Arquivo ZIP obrigatório');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('startCommand', document.getElementById('startCmdZip').value);
+            formData.append('installDeps', document.getElementById('depsZip').checked);
 
             closeSettings();
             await fetch('/deploy/zip', { method: 'POST', body: formData });
         }
 
         async function deployGit() {
-            const repoUrl = document.getElementById('repoUrl').value;
-            const startCmd = document.getElementById('startCommand').value;
-            const installDeps = document.getElementById('installDeps').checked;
-
-            if(!repoUrl) return alert('Insira a URL do Git.');
-
-            const body = JSON.stringify({ repoUrl, startCommand, installDeps });
+            const body = JSON.stringify({
+                repoUrl: document.getElementById('repoUrl').value,
+                startCommand: document.getElementById('startCmdGit').value,
+                installDeps: document.getElementById('depsGit').checked
+            });
 
             closeSettings();
             await fetch('/deploy/git', { 
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'},
-                body: body 
+                body: body
             });
         }
     </script>
