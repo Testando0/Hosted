@@ -40,12 +40,19 @@
         }
         .brand { font-weight: 700; color: var(--primary); font-size: 1rem; letter-spacing: 1px; }
 
+        .header-actions {
+            display: flex; gap: 10px;
+        }
+        
         .btn-icon {
             background: none; border: 1px solid var(--primary);
             color: var(--primary); padding: 6px; border-radius: 4px;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; /* Para o texto "REINICIAR" */
+            font-family: inherit;
         }
         .btn-icon:active { background: var(--primary); color: #000; }
+        .btn-icon-svg { padding: 6px; } /* Mantém o ícone de engrenagem com padding padrão */
 
         /* TERMINAL AREA */
         .terminal {
@@ -155,9 +162,15 @@
 
     <header>
         <div class="brand">RED PROTOCOL <span class="status">v5.4</span></div>
-        <button class="btn-icon" onclick="toggleModal(true)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        </button>
+        <div class="header-actions">
+            <button class="btn-icon" onclick="reloadTerminalLogs()">
+                REINICIAR TERMINAL
+            </button>
+            
+            <button class="btn-icon btn-icon-svg" onclick="toggleModal(true)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+        </div>
     </header>
 
     <div class="terminal" id="terminal">
@@ -236,7 +249,7 @@
         
         // --- SOCKET EVENTS ---
         socket.on('log-history', (history) => {
-            terminal.innerHTML = '';
+            terminal.innerHTML = ''; // Limpa antes de carregar o histórico
             history.forEach(addLogToScreen);
         });
 
@@ -251,6 +264,23 @@
             terminal.appendChild(div);
             terminal.scrollTop = terminal.scrollHeight;
         }
+        
+        // --- FUNÇÃO PARA REINICIAR O TERMINAL ---
+        function reloadTerminalLogs() {
+            // 1. Limpa o DOM do terminal
+            terminal.innerHTML = ''; 
+            
+            // 2. Adiciona as mensagens iniciais
+            addLogToScreen({ type: 'info', text: '-- REINICIANDO LOG DO PAINEL --', time: new Date().toLocaleTimeString('pt-BR') });
+            
+            // 3. Pede ao servidor para reenviar o histórico de logs (se o servidor suportar)
+            // No seu server.js atual, a conexão já emite o histórico.
+            // Para garantir a sincronia, podemos emitir um evento.
+            // Para o seu código, a melhor forma de forçar o reenvio é desconectar/reconectar, mas vamos 
+            // simplificar e pedir o histórico diretamente, assumindo que o server.js pode ser modificado para escutar este evento.
+            socket.emit('request-log-history');
+        }
+
 
         // --- COMMANDS ---
         function sendCommand() {
