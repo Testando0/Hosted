@@ -18,7 +18,7 @@
         body { 
             background: var(--bg); color: var(--text); 
             font-family: 'Fira Code', monospace; 
-            height: 100vh; height: 100dvh; /* Mobile fix */
+            height: 100vh; height: 100dvh;
             display: flex; flex-direction: column; 
             overflow: hidden;
         }
@@ -39,7 +39,6 @@
             box-shadow: 0 2px 15px rgba(255, 0, 51, 0.15);
         }
         .brand { font-weight: 700; color: var(--primary); font-size: 1rem; letter-spacing: 1px; }
-        .status { font-size: 0.7rem; color: var(--gray); margin-left: 5px; }
 
         .btn-icon {
             background: none; border: 1px solid var(--primary);
@@ -74,7 +73,7 @@
         #cmdInput {
             flex: 1; background: #000; border: 1px solid #333;
             color: var(--primary); padding: 10px; border-radius: 4px;
-            font-family: inherit; font-size: 1rem; /* Prevents zoom on iOS */
+            font-family: inherit; font-size: 1rem;
         }
         #cmdInput:focus { border-color: var(--primary); }
         
@@ -114,6 +113,7 @@
         .content-area { padding: 15px; overflow-y: auto; display: none; }
         .content-area.show { display: block; }
         
+        /* Forms... */
         .form-group { margin-bottom: 15px; }
         .form-label { display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; }
         .form-input {
@@ -130,22 +130,31 @@
         }
         
         /* FILE LIST */
+        .file-list-header { color: #aaa; font-size: 0.8rem; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
         .file-item {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px; border-bottom: 1px solid #222;
+            padding: 10px 0; border-bottom: 1px solid #222; cursor: pointer;
         }
-        .file-name { color: #ddd; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; }
+        .file-item:hover { background: rgba(255,0,51,0.05); }
+        
+        .file-name { color: #ddd; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 3; }
+        .file-size { color: #aaa; font-size: 0.8rem; flex: 1; text-align: right; padding-right: 10px; }
+        .file-actions { flex: 1; text-align: right; }
+        
         .file-actions button {
             background: none; border: 1px solid #333; color: #ff4444;
-            padding: 5px 10px; border-radius: 4px; margin-left: 5px;
+            padding: 5px 10px; border-radius: 4px; margin-left: 5px; font-size: 0.8rem;
         }
+        .icon-dir { color: #ffcc00; margin-right: 5px; }
+        .icon-up { color: #00ff66; margin-right: 5px; }
+
 
     </style>
 </head>
 <body>
 
     <header>
-        <div class="brand">RED PROTOCOL <span class="status">v5.0</span></div>
+        <div class="brand">RED PROTOCOL <span class="status">v5.1</span></div>
         <button class="btn-icon" onclick="toggleModal(true)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
@@ -207,8 +216,15 @@
             </div>
 
             <div id="panel-files" class="content-area">
-                <button class="btn-full" style="background:#333; color:#fff; margin-bottom:15px" onclick="refreshFiles()">ATUALIZAR LISTA</button>
-                <div id="fileListContainer">Carregando...</div>
+                <div class="file-list-header">Caminho Atual: <span id="currentPathDisplay">/</span></div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn-full" style="background:#333; color:#fff; flex:1" onclick="refreshFiles()">ATUALIZAR</button>
+                    <input type="file" id="uploadSingle" style="display:none" onchange="uploadSingleFile(this)">
+                    <button class="btn-full" style="background:#555; color:#fff; flex:1" onclick="document.getElementById('uploadSingle').click()">UPLOAD</button>
+                </div>
+                
+                <div id="fileListContainer" style="overflow-y: auto;">
+                    </div>
             </div>
         </div>
     </div>
@@ -216,11 +232,11 @@
     <script>
         const socket = io();
         const terminal = document.getElementById('terminal');
+        let currentPath = '/'; // Estado central para a navegação de arquivos
         
         // --- SOCKET EVENTS ---
-        
         socket.on('log-history', (history) => {
-            terminal.innerHTML = ''; // Limpa para evitar duplicados
+            terminal.innerHTML = '';
             history.forEach(addLogToScreen);
         });
 
@@ -233,7 +249,6 @@
             div.className = `log type-${data.type}`;
             div.innerHTML = `<span class="ts">${data.time}</span>${data.text}`;
             terminal.appendChild(div);
-            // Auto scroll
             terminal.scrollTop = terminal.scrollHeight;
         }
 
@@ -246,8 +261,6 @@
                 input.value = '';
             }
         }
-        
-        // Send on Enter key
         document.getElementById('cmdInput').addEventListener('keypress', (e) => {
             if(e.key === 'Enter') sendCommand();
         });
@@ -266,7 +279,108 @@
             if(id === 'files') refreshFiles();
         }
 
-        // --- DEPLOY LOGIC ---
+        // --- FILES LOGIC (ATUALIZADO PARA NAVEGAÇÃO) ---
+        function changePath(newSegment) {
+            if (newSegment === '..') {
+                // Navega para o pai: remove o último segmento após a última barra
+                currentPath = currentPath.substring(0, currentPath.lastIndexOf('/', currentPath.length - 2) + 1);
+            } else if (newSegment === '/') {
+                currentPath = '/';
+            } else {
+                // Navega para o filho: adiciona o novo segmento
+                currentPath += newSegment + '/';
+            }
+            refreshFiles();
+        }
+
+        function renderPathDisplay() {
+            document.getElementById('currentPathDisplay').innerText = '/user_bot' + currentPath;
+        }
+
+        async function refreshFiles() {
+            const container = document.getElementById('fileListContainer');
+            renderPathDisplay();
+            container.innerHTML = 'Buscando arquivos...';
+            
+            try {
+                const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
+                const files = await res.json();
+                
+                container.innerHTML = '';
+                
+                // 1. Adicionar o link para Voltar (..) se não estiver na raiz
+                if (currentPath !== '/') {
+                    const backDiv = document.createElement('div');
+                    backDiv.className = 'file-item';
+                    backDiv.onclick = () => changePath('..');
+                    backDiv.innerHTML = `<div class="file-name"><span class="icon-up">⬆️</span> ..</div><div class="file-size"></div><div class="file-actions"></div>`;
+                    container.appendChild(backDiv);
+                }
+
+                // 2. Adicionar a lista de arquivos e pastas
+                files.forEach(f => {
+                    const isDir = f.isDir;
+                    const div = document.createElement('div');
+                    div.className = 'file-item';
+                    
+                    if (isDir) {
+                        div.onclick = () => changePath(f.name);
+                        div.innerHTML = `
+                            <div class="file-name"><span class="icon-dir">📁</span> ${f.name}</div>
+                            <div class="file-size">-</div>
+                            <div class="file-actions">
+                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
+                            </div>
+                        `;
+                    } else {
+                        // Arquivos não clicáveis (apenas para deletar)
+                        div.onclick = () => {}; 
+                        div.innerHTML = `
+                            <div class="file-name">📄 ${f.name}</div>
+                            <div class="file-size">${f.size}</div>
+                            <div class="file-actions">
+                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
+                            </div>
+                        `;
+                    }
+                    container.appendChild(div);
+                });
+
+                if(files.length === 0 && currentPath === '/') {
+                    container.innerHTML += '<div style="text-align:center; color:#666; margin-top:20px;">Pasta raiz vazia.</div>';
+                }
+
+            } catch(e) {
+                container.innerHTML = `<div style="color:red; text-align:center;">Erro ao carregar lista. ${e.message}</div>`;
+            }
+        }
+
+        async function deleteFile(name) {
+            if(!confirm(`Deletar ${currentPath}${name}?`)) return;
+            
+            await fetch('/files/delete', {
+                method: 'DELETE', 
+                headers: {'Content-Type':'application/json'}, 
+                body: JSON.stringify({ name: name, currentPath: currentPath })
+            });
+            refreshFiles();
+        }
+
+        async function uploadSingleFile(input) {
+            const file = input.files[0];
+            if(!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            // ENVIAMOS O CAMINHO ATUAL para que o backend salve no local correto.
+            formData.append('currentPath', currentPath); 
+
+            await fetch('/files/upload', { method: 'POST', body: formData });
+            input.value = ''; 
+            refreshFiles(); 
+        }
+        
+        // --- DEPLOY LOGIC (MANTIDA) ---
         async function deployZip() {
             const file = document.getElementById('zipFile').files[0];
             if(!file) return alert("Selecione um ZIP!");
@@ -281,55 +395,18 @@
         }
 
         async function deployGit() {
-            const body = {
+            const body = JSON.stringify({
                 repoUrl: document.getElementById('gitUrl').value,
                 startCommand: document.getElementById('gitCmd').value,
                 installDeps: document.getElementById('gitDeps').checked
-            };
+            });
+
             toggleModal(false);
             await fetch('/deploy/git', { 
-                method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: body
             });
-        }
-
-        // --- FILES LOGIC ---
-        async function refreshFiles() {
-            const container = document.getElementById('fileListContainer');
-            container.innerHTML = 'Buscando arquivos...';
-            try {
-                const res = await fetch('/files/list');
-                const files = await res.json();
-                
-                if(files.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; color:#666">Pasta vazia</div>';
-                    return;
-                }
-
-                container.innerHTML = '';
-                files.forEach(f => {
-                    const div = document.createElement('div');
-                    div.className = 'file-item';
-                    div.innerHTML = `
-                        <div class="file-name" style="color:${f.isDir ? '#ffcc00' : '#ddd'}">
-                            ${f.isDir ? '[DIR]' : ''} ${f.name}
-                        </div>
-                        <div class="file-actions">
-                            <button onclick="deleteFile('${f.name}')">Del</button>
-                        </div>
-                    `;
-                    container.appendChild(div);
-                });
-            } catch(e) {
-                container.innerHTML = 'Erro ao carregar arquivos.';
-            }
-        }
-
-        async function deleteFile(name) {
-            if(!confirm('Deletar ' + name + '?')) return;
-            await fetch('/files/delete', {
-                method: 'DELETE', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name})
-            });
-            refreshFiles();
         }
     </script>
 </body>
