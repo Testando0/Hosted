@@ -23,11 +23,9 @@ const storageZip = multer.diskStorage({
 });
 const uploadZip = multer({ storage: storageZip });
 
-// Configuração Multer (Arquivos Avulsos) - Destination deve ser dinâmica
-// Usamos uma pasta temporária e movemos depois, ou configuramos o BOT_DIR e ajustamos na rota.
-// Vamos manter o BOT_DIR e mover no frontend/backend
+// Configuração Multer (Arquivos Avulsos)
 const storageFile = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, BOT_DIR),
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR), // Salva temporariamente
     filename: (req, file, cb) => cb(null, file.originalname)
 });
 const uploadFile = multer({ storage: storageFile });
@@ -38,33 +36,45 @@ app.use(express.json());
 let currentBotProcess = null;
 let logHistory = [];
 
-// --- SEGURANÇA DE ARQUIVOS ---
+// ----------------------------------------
+// --- SEGURANÇA DE ARQUIVOS (CORRIGIDO) ---
+// ----------------------------------------
+
 /**
- * Garante que o caminho solicitado está DENTRO da pasta BOT_DIR.
- * @param {string} targetPath - Caminho relativo fornecido pelo cliente (ex: 'src/config.json' ou '../server.js')
+ * Garante que o caminho solicitado (clientPath) está DENTRO da pasta BOT_DIR, 
+ * independentemente de ter '..' ou barras extras.
+ * @param {string} clientPath - Caminho limpo ou relativo fornecido pelo cliente (ex: '/src/' ou 'index.js')
  * @returns {string} Caminho absoluto seguro.
  */
-function getSafeAbsolutePath(targetPath) {
-    if (typeof targetPath !== 'string') targetPath = '';
+function getSafeAbsolutePath(clientPath) {
+    if (typeof clientPath !== 'string') clientPath = '';
     
-    // Resolve o caminho, tratando sequências como '..'
-    const resolvedPath = path.resolve(BOT_DIR, targetPath);
+    // 1. Resolve o caminho RELATIVO ao BOT_DIR. Isso trata '..' e barras.
+    // path.join resolve o caminho corretamente dentro do BOT_DIR
+    const targetPath = path.join(BOT_DIR, clientPath);
+
+    // 2. Resolve o caminho para sua forma final (absoluta)
+    const resolvedPath = path.resolve(targetPath);
     
-    // ⚠️ CRÍTICO: Verifica se o caminho resolvido começa com a pasta base
-    if (!resolvedPath.startsWith(BOT_DIR)) {
+    // 3. CRÍTICO: Verifica se o resolvedPath ainda está dentro do BOT_DIR.
+    // Usamos path.normalize para remover a barra final do BOT_DIR para comparação segura.
+    const botDirNormalized = path.normalize(BOT_DIR);
+    
+    if (!resolvedPath.startsWith(botDirNormalized)) {
         throw new Error("Acesso negado: Tentativa de Path Traversal.");
     }
+    
     return resolvedPath;
 }
 
-// --- ROTAS DO FILE MANAGER (ATUALIZADAS) ---
+// --- ROTAS DO FILE MANAGER ---
 
 // 1. Listar Arquivos
 app.get('/files/list', async (req, res) => {
     try {
-        // Recebe o caminho a ser listado (ex: '/src' ou '/')
+        // Recebe o caminho a ser listado (ex: '/src/' ou '/')
         const clientPath = req.query.path || '/'; 
-        const targetDir = getSafeAbsolutePath(clientPath);
+        const targetDir = getSafeAbsolutePath(clientPath); // Usa a função corrigida
         
         if(!fs.existsSync(targetDir)) return res.status(404).json({ error: 'Diretório não encontrado.' });
         if(!fs.statSync(targetDir).isDirectory()) return res.status(400).json({ error: 'Caminho não é um diretório.' });
@@ -73,7 +83,6 @@ app.get('/files/list', async (req, res) => {
         const fileData = [];
         
         for (const file of files) {
-            // Cria o caminho absoluto para o stat
             const filePath = path.join(targetDir, file);
             
             try {
@@ -86,70 +95,78 @@ app.get('/files/list', async (req, res) => {
             } catch(e) {}
         }
         
-        // Ordena: Pastas primeiro, depois arquivos
         fileData.sort((a, b) => (a.isDir === b.isDir) ? 0 : a.isDir ? -1 : 1);
         
         res.json(fileData);
     } catch (e) {
-        addLog('error', `Erro ao listar: ${e.message}`);
-        res.status(500).json({ error: e.message });
+        // Adicionada verificação específica para garantir que a mensagem de Path Traversal seja retornada
+        const message = e.message.includes("Path Traversal") ? e.message : `Erro interno: ${e.message}`;
+        addLog('error', `Erro ao listar: ${message}`);
+        res.status(500).json({ error: message });
     }
 });
 
 // 2. Deletar Arquivo
 app.delete('/files/delete', async (req, res) => {
     try {
-        // Recebe o nome do arquivo e o caminho atual onde ele está
         const { name, currentPath } = req.body;
         if (!name || !currentPath) return res.status(400).json({ error: 'Caminho ou nome inválido' });
 
-        // Constrói o caminho completo a ser deletado (ex: user_bot/src/index.js)
-        const fullPathToDelete = path.join(currentPath, name);
-        const targetPath = getSafeAbsolutePath(fullPathToDelete);
+        // ⚠️ CRÍTICO: Constrói o caminho completo e limpo para o alvo.
+        // Se currentPath for '/src/' e name for 'index.js', clientPath é 'src/index.js'
+        // Se currentPath for '/' e name for 'src', clientPath é 'src'
+        const clientPathToDelete = path.join(currentPath, name);
+
+        // Usa a função segura para obter o caminho absoluto e validado.
+        const targetPath = getSafeAbsolutePath(clientPathToDelete);
         
-        // Proteção: Não deletar a pasta raiz do bot
-        if (targetPath === BOT_DIR) throw new Error("Não é possível deletar a raiz.");
+        // Proteção: Não deletar a pasta raiz do bot (se tentarem deletar '/')
+        if (targetPath === path.resolve(BOT_DIR)) {
+            throw new Error("Não é possível deletar a raiz do diretório do bot.");
+        }
 
         await fs.remove(targetPath);
-        addLog('warn', `Deletado: ${fullPathToDelete}`);
+        addLog('warn', `Deletado: ${path.join(currentPath, name)}`); // Loga o caminho limpo do cliente
         res.json({ success: true });
     } catch (e) {
-        addLog('error', `Erro ao deletar: ${e.message}`);
-        res.status(500).json({ error: e.message });
+        const message = e.message.includes("Path Traversal") ? e.message : `Erro ao deletar: ${e.message}`;
+        addLog('error', message);
+        res.status(500).json({ error: message });
     }
 });
 
-// 3. Upload de Arquivo Único (Atualizado para mover para a pasta correta)
+// 3. Upload de Arquivo Único (Atualizado para lidar com BOT_DIR dinâmico)
 app.post('/files/upload', uploadFile.single('file'), async (req, res) => {
     if (!req.file || !req.body.currentPath) {
-        await fs.remove(req.file ? req.file.path : ''); // Limpa o arquivo se der erro
+        // Limpa o temporário se o request for ruim.
+        if (req.file) await fs.remove(req.file.path); 
         return res.status(400).json({ error: 'Nenhum arquivo enviado ou caminho faltante.' });
     }
     
     try {
-        const clientPath = req.body.currentPath; // Caminho de destino (ex: '/src')
+        const clientPath = req.body.currentPath; // Caminho de destino (ex: '/src/')
         const targetDir = getSafeAbsolutePath(clientPath);
 
-        // O arquivo foi salvo temporariamente em BOT_DIR/nome-original. Agora movemos para a pasta correta.
-        const originalFilePath = path.join(BOT_DIR, req.file.originalname);
+        // O arquivo foi salvo temporariamente em UPLOAD_DIR
+        const originalFilePath = path.join(UPLOAD_DIR, req.file.originalname);
         const finalFilePath = path.join(targetDir, req.file.originalname);
         
-        // Usa fs-extra para mover (substitui se já existir)
+        // Move o arquivo do temporário para o destino seguro validado
         await fs.move(originalFilePath, finalFilePath, { overwrite: true });
 
-        addLog('info', `Upload: ${finalFilePath}`);
+        addLog('info', `Upload para: ${clientPath}${req.file.originalname}`);
         res.json({ success: true });
 
     } catch (e) {
-        addLog('error', `Erro no upload: ${e.message}`);
-        res.status(500).json({ error: e.message });
+        // Limpa o arquivo temporário em caso de erro na lógica de mover/segurança
+        if (req.file) await fs.remove(req.file.path); 
+        const message = e.message.includes("Path Traversal") ? e.message : `Erro no upload: ${e.message}`;
+        addLog('error', message);
+        res.status(500).json({ error: message });
     }
 });
 
 // --- FUNÇÕES AUXILIARES E DEPLOY (MANTIDAS) ---
-
-// Código para Socket.IO, Logs (addLog), KillBot, Deploy ZIP/GIT, DeployFlow, StartBot...
-// ... (mantenha todo o restante do código do server.js V5.0 aqui)
 
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
@@ -216,6 +233,7 @@ app.post('/deploy/git', async (req, res) => {
 
     deployFlow(startCommand, installDeps === 'true', async () => {
         addLog('info', `Clonando ${repoUrl}...`);
+        // O simpleGit limpa e clona no diretório, mas precisamos limpar antes no deployFlow
         await simpleGit().clone(repoUrl, BOT_DIR);
     });
     res.json({ success: true });
