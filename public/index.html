@@ -2,13 +2,44 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>REDHOSTING</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REDHOSTING - MANAGER</title>
     <script src="/socket.io/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        /* [ESTILOS OMITIDOS POR REPETIÇÃO, MANTER OS ESTILOS ORIGINAIS] */
-        /* --- ESTILOS ADICIONAIS NECESSÁRIOS --- */
+        :root { --bg: #050505; --panel: #111; --primary: #ff0033; --text: #eee; }
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        body { background: var(--bg); color: var(--text); font-family: 'Fira Code', monospace; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        header { height: 50px; background: var(--panel); border-bottom: 2px solid var(--primary); display: flex; align-items: center; justify-content: space-between; padding: 0 15px; }
+        .brand { color: var(--primary); font-weight: bold; letter-spacing: 1px; }
+        
+        .terminal { flex: 1; padding: 10px; overflow-y: auto; font-size: 0.85rem; background: rgba(0,0,0,0.5); }
+        .log { margin-bottom: 4px; border-left: 2px solid transparent; padding-left: 5px; word-wrap: break-word; }
+        .log.type-info { color: #ccc; }
+        .log.type-error { color: #ff4444; background: rgba(255,0,0,0.1); border-color: red; }
+        .log.type-success { color: #00ff66; border-color: #00ff66; }
+        .log.type-warn { color: #ffcc00; }
+        .ts { color: #666; margin-right: 8px; font-size: 0.7rem; }
+
+        .input-area { padding: 10px; background: var(--panel); display: flex; gap: 10px; }
+        input { flex: 1; background: #000; border: 1px solid #333; color: #fff; padding: 10px; font-family: inherit; }
+        button { cursor: pointer; background: var(--primary); border: none; color: #000; font-weight: bold; padding: 0 15px; }
+
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; align-items: center; justify-content: center; }
+        .modal { width: 90%; max-width: 600px; background: #0f0f0f; border: 1px solid var(--primary); border-radius: 5px; display: flex; flex-direction: column; height: 80vh; }
+        .modal-header { padding: 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; }
+        .close { cursor: pointer; font-size: 1.5rem; }
+
+        .tabs { display: flex; background: #000; }
+        .tab { flex: 1; padding: 15px; text-align: center; color: #666; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { color: var(--primary); border-color: var(--primary); background: #1a0505; }
+
+        .content { padding: 20px; overflow-y: auto; flex: 1; display: none; }
+        .content.show { display: block; }
+
+        /* CARDS DE BOTS PRONTOS */
         .bot-list { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .bot-card { 
             background: #1a1a1a; border: 1px solid #333; padding: 15px; 
@@ -18,45 +49,38 @@
         .bot-card h3 { margin-bottom: 5px; color: #fff; }
         .bot-card p { font-size: 0.8rem; color: #888; }
         .bot-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
+
     </style>
 </head>
 <body>
-
     <header>
         <div class="brand">REDHOSTING</div>
-        <div class="header-actions">
-            <button class="btn-icon" onclick="reloadTerminalLogs()">REINICIAR</button>
-            
-            <button class="btn-icon btn-icon-svg" onclick="toggleModal(true)">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-            </button>
-        </div>
+        <button onclick="toggleModal(true)" style="background:transparent; border:1px solid var(--primary); color:var(--primary)">⚙️ CONFIG</button>
     </header>
 
     <div class="terminal" id="terminal">
-        <div class="log type-info">-- RED SYSTEM READY --</div>
-        <div class="log type-warn">Aguardando conexão...</div>
+        <div class="log type-info">Conectando ao sistema...</div>
     </div>
 
     <div class="input-area">
-        <input type="text" id="cmdInput" placeholder="Comando..." autocomplete="off">
-        <button class="btn-send" onclick="sendCommand()">></button>
+        <input type="text" id="cmd" placeholder="Comando...">
+        <button onclick="send()">Enviar</button>
     </div>
 
-    <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-overlay" id="modal">
         <div class="modal">
             <div class="modal-header">
-                <h3>CONFIGURAÇÃO</h3>
-                <span class="close-btn" onclick="toggleModal(false)">&times;</span>
+                <h3>PAINEL DE CONTROLE</h3>
+                <span class="close" onclick="toggleModal(false)">&times;</span>
             </div>
             
             <div class="tabs">
                 <div class="tab active" onclick="setTab('bots', this)">BOTS PRONTOS</div>
-                <div class="tab" onclick="setTab('git', this)">CUSTOMIZADO</div>
+                <div class="tab" onclick="setTab('custom', this)">GIT CUSTOM</div>
                 <div class="tab" onclick="setTab('files', this)">ARQUIVOS</div>
             </div>
 
-            <div id="panel-bots" class="content-area show">
+            <div id="panel-bots" class="content show">
                 <h4 style="margin-bottom:15px; color:#aaa;">Selecione um bot para instalar automaticamente:</h4>
                 <div class="bot-list">
                     <div class="bot-card" onclick="deployPreset('https://github.com/bronxys/Black.git', 'Black')">
@@ -72,95 +96,56 @@
                     </div>
                 </div>
                 <p style="margin-top:20px; font-size:0.8rem; color:#666; text-align:center;">
-                    ⚠️ O bot atual será **apagado** e o novo será instalado.
+                    ⚠️ Ao clicar, o bot atual será apagado e o novo será instalado.
                 </p>
             </div>
 
-            <div id="panel-git" class="content-area">
-                <div class="form-group">
-                    <label class="form-label">Repositório URL</label>
-                    <input type="text" id="gitUrl" placeholder="https://github.com/usuario/repo.git" class="form-input">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Comando de Início</label>
-                    <input type="text" id="gitCmd" value="node index.js" class="form-input">
-                </div>
-                <div class="checkbox-wrapper">
-                    <input type="checkbox" id="gitDeps" checked>
-                    <label>Rodar 'npm install'</label>
-                </div>
-                <button class="btn-full" onclick="deployGit()">CLONE & START</button>
+            <div id="panel-custom" class="content">
+                <p style="margin-bottom:10px">URL do Repositório GitHub:</p>
+                <input type="text" id="gitUrl" placeholder="https://github.com/usuario/repo.git" style="width:100%; margin-bottom:10px;">
+                <button onclick="deployCustom()" style="width:100%; padding:15px;">CLONAR & INICIAR</button>
             </div>
 
-            <div id="panel-files" class="content-area">
-                <div class="file-list-header">Caminho Atual: <span id="currentPathDisplay">/</span></div>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button class="btn-full" style="background:#333; color:#fff; flex:1" onclick="refreshFiles()">ATUALIZAR</button>
-                    <input type="file" id="uploadSingle" style="display:none" onchange="uploadSingleFile(this)">
-                    <button class="btn-full" style="background:#555; color:#fff; flex:1" onclick="document.getElementById('uploadSingle').click()">UPLOAD</button>
-                </div>
-                
-                <div id="fileListContainer" style="overflow-y: auto;"></div>
+            <div id="panel-files" class="content">
+                <div id="fileList">Carregando...</div>
+                <button onclick="loadFiles()" style="margin-top:10px; width:100%; background:#333; color:#fff;">Atualizar Lista</button>
             </div>
         </div>
     </div>
 
     <script>
         const socket = io();
-        const terminal = document.getElementById('terminal');
-        let currentPath = '/';
-        
-        // --- LOGS E COMANDOS (MANTIDOS) ---
-        socket.on('log-history', (history) => {
-            terminal.innerHTML = '';
-            history.forEach(addLogToScreen);
-        });
-        socket.on('log-message', addLogToScreen);
+        const term = document.getElementById('terminal');
 
-        function addLogToScreen(data) {
+        // LOGS
+        socket.on('log-history', h => { term.innerHTML = ''; h.forEach(addLog); });
+        socket.on('log-message', addLog);
+
+        function addLog(msg) {
             const div = document.createElement('div');
-            div.className = `log type-${data.type}`;
-            div.innerHTML = `<span class="ts">${data.time}</span>${data.text}`;
-            terminal.appendChild(div);
-            terminal.scrollTop = terminal.scrollHeight;
-        }
-        
-        // Função do Botão REINICIAR: Pede ao servidor o histórico novamente
-        function reloadTerminalLogs() {
-            terminal.innerHTML = ''; 
-            addLogToScreen({ type: 'info', text: '-- REINICIANDO LOG DO PAINEL --', time: new Date().toLocaleTimeString('pt-BR') });
-            socket.emit('request-log-history'); 
+            div.className = `log type-${msg.type}`;
+            div.innerHTML = `<span class="ts">${msg.time}</span>${msg.text}`;
+            term.appendChild(div);
+            term.scrollTop = term.scrollHeight;
         }
 
-        function sendCommand() {
-            const input = document.getElementById('cmdInput');
-            const cmd = input.value.trim();
-            if(cmd) {
-                socket.emit('terminal-input', cmd);
-                input.value = '';
-            }
-        }
-        document.getElementById('cmdInput').addEventListener('keypress', (e) => {
-            if(e.key === 'Enter') sendCommand();
-        });
-
-        // --- UI LOGIC (MANTIDA) ---
-        function toggleModal(show) {
-            document.getElementById('modalOverlay').style.display = show ? 'flex' : 'none';
-            if(show && document.querySelector('.tab.active').innerText.includes('ARQUIVOS')) refreshFiles();
+        // COMANDOS
+        function send() {
+            const inp = document.getElementById('cmd');
+            if(inp.value) { socket.emit('terminal-input', inp.value); inp.value = ''; }
         }
 
+        // UI TABS
+        function toggleModal(s) { document.getElementById('modal').style.display = s ? 'flex' : 'none'; }
         function setTab(id, el) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.content-area').forEach(c => c.classList.remove('show'));
+            document.querySelectorAll('.content').forEach(c => c.classList.remove('show'));
             el.classList.add('active');
-            document.getElementById(`panel-${id}`).classList.add('show');
-            if(id === 'files') refreshFiles();
+            document.getElementById('panel-'+id).classList.add('show');
+            if(id === 'files') loadFiles();
         }
 
-        // --- DEPLOY LOGIC ---
-        
-        // NOVO: DEPLOY PARA BOTS PRONTOS
+        // FUNÇÃO DEPLOY PRESET (BLACK / NAZUNA)
         function deployPreset(url, name) {
             if(!confirm(`Tem certeza que deseja apagar tudo e instalar o ${name}?`)) return;
             
@@ -171,136 +156,25 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     repoUrl: url,
-                    installDeps: true, // Sempre instala dependencias para bots prontos
-                    startCommand: '' // Deixa o backend decidir
+                    installDeps: true // Sempre instala dependencias para bots prontos
                 })
             });
         }
-        
-        // DEPLOY GIT CUSTOM (MANTIDA)
-        async function deployGit() {
-            const body = JSON.stringify({
-                repoUrl: document.getElementById('gitUrl').value,
-                startCommand: document.getElementById('gitCmd').value,
-                installDeps: document.getElementById('gitDeps').checked
-            });
 
-            toggleModal(false);
-            await fetch('/deploy/git', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: body
-            });
-        }
-        
-        // --- FUNÇÕES DE ARQUIVOS (MANTIDAS) ---
-        // Funções changePath, renderPathDisplay, refreshFiles, deleteFile, uploadSingleFile
-        // (Assumimos que você as manteve no seu HTML original, pois são longas)
-        function changePath(newSegment) {
-            if (newSegment === '..') {
-                const pathSegments = currentPath.split('/').filter(s => s.length > 0);
-                pathSegments.pop(); 
-                currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
-            } else if (newSegment === '/') {
-                currentPath = '/';
-            } else {
-                currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
-            }
-            currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
-            if (currentPath === '//') currentPath = '/';
-            refreshFiles();
+        // FUNÇÃO DEPLOY CUSTOM
+        function deployCustom() {
+            const url = document.getElementById('gitUrl').value;
+            if(!url) return alert('Coloque a URL!');
+            deployPreset(url, 'Custom Bot');
         }
 
-        function renderPathDisplay() {
-            document.getElementById('currentPathDisplay').innerText = '/user_bot' + currentPath;
+        // LISTAR ARQUIVOS
+        async function loadFiles() {
+            const res = await fetch('/files/list');
+            const files = await res.json();
+            const div = document.getElementById('fileList');
+            div.innerHTML = files.length ? files.map(f => `<div>${f.isDir?'📁':'📄'} ${f.name} <small>(${f.size})</small></div>`).join('') : 'Pasta vazia';
         }
-
-        async function refreshFiles() {
-            const container = document.getElementById('fileListContainer');
-            renderPathDisplay();
-            container.innerHTML = 'Buscando arquivos...';
-            
-            try {
-                const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
-                let files;
-                
-                if (res.ok) {
-                    files = await res.json();
-                } else {
-                    const errorData = await res.json();
-                    throw new Error(errorData.error || `Erro HTTP: ${res.status}`);
-                }
-
-                container.innerHTML = '';
-                
-                if (currentPath !== '/') {
-                    const backDiv = document.createElement('div');
-                    backDiv.className = 'file-item';
-                    backDiv.onclick = () => changePath('..');
-                    backDiv.innerHTML = `<div class="file-name"><span class="icon-up">⬆️</span> ..</div><div class="file-size"></div><div class="file-actions"></div>`;
-                    container.appendChild(backDiv);
-                }
-
-                files.forEach(f => {
-                    const isDir = f.isDir;
-                    const div = document.createElement('div');
-                    div.className = 'file-item';
-                    
-                    if (isDir) {
-                        div.onclick = () => changePath(f.name);
-                        div.innerHTML = `
-                            <div class="file-name"><span class="icon-dir">📁</span> ${f.name}</div>
-                            <div class="file-size">-</div>
-                            <div class="file-actions">
-                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
-                            </div>
-                        `;
-                    } else {
-                        div.onclick = () => {}; 
-                        div.innerHTML = `
-                            <div class="file-name">📄 ${f.name}</div>
-                            <div class="file-size">${f.size}</div>
-                            <div class="file-actions">
-                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
-                            </div>
-                        `;
-                    }
-                    container.appendChild(div);
-                });
-
-                if(files.length === 0 && currentPath === '/') {
-                    container.innerHTML += '<div style="text-align:center; color:#666; margin-top:20px;">Pasta raiz vazia</div>';
-                }
-
-            } catch(e) {
-                container.innerHTML = `<div style="color:red; text-align:center;">Erro ao carregar lista. ${e.message}</div>`;
-            }
-        }
-
-        async function deleteFile(name) {
-            if(!confirm(`Deletar ${currentPath}${name}?`)) return;
-            
-            await fetch('/files/delete', {
-                method: 'DELETE', 
-                headers: {'Content-Type':'application/json'}, 
-                body: JSON.stringify({ name: name, currentPath: currentPath })
-            });
-            refreshFiles();
-        }
-
-        async function uploadSingleFile(input) {
-            const file = input.files[0];
-            if(!file) return;
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('currentPath', currentPath); 
-
-            await fetch('/files/upload', { method: 'POST', body: formData });
-            input.value = ''; 
-            refreshFiles(); 
-        }
-        
     </script>
 </body>
 </html>
