@@ -154,7 +154,7 @@
 <body>
 
     <header>
-        <div class="brand">RED PROTOCOL <span class="status">v5.2</span></div>
+        <div class="brand">RED PROTOCOL <span class="status">v5.3</span></div>
         <button class="btn-icon" onclick="toggleModal(true)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
@@ -279,24 +279,26 @@
             if(id === 'files') refreshFiles();
         }
 
-        // ------------------------------------
-        // --- FILES LOGIC (CORRIGIDA V5.2) ---
-        // ------------------------------------
+        // -----------------------------------------------------------
+        // --- FILES LOGIC (CORRIGIDA V5.3: Path Traversal/Navegação) ---
+        // -----------------------------------------------------------
         
         function changePath(newSegment) {
             if (newSegment === '..') {
-                // Navega para o pai: remove o último segmento
+                // Lógica aprimorada para subir um nível com segurança:
                 const pathSegments = currentPath.split('/').filter(s => s.length > 0);
-                pathSegments.pop(); 
+                pathSegments.pop(); // Remove o último segmento (pasta atual)
+                
+                // Reconstrói o caminho. Se for a raiz, é '/'. Senão, é '/pasta/subpasta/'
                 currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
             } else if (newSegment === '/') {
                 currentPath = '/';
             } else {
-                // Navega para o filho
+                // Navega para o filho (entra na pasta)
                 currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
             }
             
-            // Normalização final para garantir o formato (ex: /src/pasta/)
+            // Normalização final (Remove barras duplas e garante que comece/termine com barra)
             currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
             if (currentPath === '//') currentPath = '/';
             
