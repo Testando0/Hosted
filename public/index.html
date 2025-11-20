@@ -48,11 +48,11 @@
             background: none; border: 1px solid var(--primary);
             color: var(--primary); padding: 6px; border-radius: 4px;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
-            font-size: 0.8rem; /* Para o texto "REINICIAR" */
+            font-size: 0.8rem; 
             font-family: inherit;
         }
         .btn-icon:active { background: var(--primary); color: #000; }
-        .btn-icon-svg { padding: 6px; } /* Mantém o ícone de engrenagem com padding padrão */
+        .btn-icon-svg { padding: 6px; } 
 
         /* TERMINAL AREA */
         .terminal {
@@ -155,6 +155,16 @@
         .icon-dir { color: #ffcc00; margin-right: 5px; }
         .icon-up { color: #00ff66; margin-right: 5px; }
 
+        /* ESTILOS ADICIONAIS PARA BOTS PRONTOS */
+        .bot-list { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .bot-card { 
+            background: #1a1a1a; border: 1px solid #333; padding: 15px; 
+            border-radius: 8px; cursor: pointer; transition: 0.2s; text-align: center;
+        }
+        .bot-card:hover { border-color: var(--primary); transform: translateY(-2px); background: #222; }
+        .bot-card h3 { margin-bottom: 5px; color: #fff; }
+        .bot-card p { font-size: 0.8rem; color: #888; }
+        .bot-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
 
     </style>
 </head>
@@ -192,6 +202,7 @@
             
             <div class="tabs">
                 <div class="tab active" onclick="setTab('zip', this)">ZIP</div>
+                <div class="tab" onclick="setTab('bots', this)">BOTS PRONTOS</div>
                 <div class="tab" onclick="setTab('git', this)">GIT</div>
                 <div class="tab" onclick="setTab('files', this)">ARQUIVOS</div>
             </div>
@@ -211,11 +222,30 @@
                 </div>
                 <button class="btn-full" onclick="deployZip()">UPLOAD & START</button>
             </div>
+            
+            <div id="panel-bots" class="content-area">
+                <h4 style="margin-bottom:15px; color:#aaa;">Selecione um bot para instalar automaticamente:</h4>
+                <div class="bot-list">
+                    <div class="bot-card" onclick="deployPreset('https://github.com/bronxys/Black.git', 'Black')">
+                        <span class="bot-icon">🕷️</span>
+                        <h3>BLACK</h3>
+                        <p>Bot completo e versátil.</p>
+                    </div>
 
+                    <div class="bot-card" onclick="deployPreset('https://github.com/bronxys/Nazuna.git', 'Nazuna')">
+                        <span class="bot-icon">🌸</span>
+                        <h3>NAZUNA</h3>
+                        <p>Bot focado em interação.</p>
+                    </div>
+                </div>
+                <p style="margin-top:20px; font-size:0.8rem; color:#666; text-align:center;">
+                    ⚠️ O bot atual será **apagado** e o novo será instalado.
+                </p>
+            </div>
             <div id="panel-git" class="content-area">
                 <div class="form-group">
                     <label class="form-label">Repositório URL</label>
-                    <input type="text" id="gitUrl" placeholder="https://github.com/user/repo" class="form-input">
+                    <input type="text" id="gitUrl" placeholder="https://github.com/user/repo.git" class="form-input">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Comando de Início</label>
@@ -249,7 +279,7 @@
         
         // --- SOCKET EVENTS ---
         socket.on('log-history', (history) => {
-            terminal.innerHTML = ''; // Limpa antes de carregar o histórico
+            terminal.innerHTML = ''; 
             history.forEach(addLogToScreen);
         });
 
@@ -267,18 +297,9 @@
         
         // --- FUNÇÃO PARA REINICIAR O TERMINAL ---
         function reloadTerminalLogs() {
-            // 1. Limpa o DOM do terminal
             terminal.innerHTML = ''; 
-            
-            // 2. Adiciona as mensagens iniciais
             addLogToScreen({ type: 'info', text: '-- REINICIANDO LOG DO PAINEL --', time: new Date().toLocaleTimeString('pt-BR') });
-            
-            // 3. Pede ao servidor para reenviar o histórico de logs (se o servidor suportar)
-            // No seu server.js atual, a conexão já emite o histórico.
-            // Para garantir a sincronia, podemos emitir um evento.
-            // Para o seu código, a melhor forma de forçar o reenvio é desconectar/reconectar, mas vamos 
-            // simplificar e pedir o histórico diretamente, assumindo que o server.js pode ser modificado para escutar este evento.
-            socket.emit('request-log-history');
+            socket.emit('request-log-history'); 
         }
 
 
@@ -298,7 +319,11 @@
         // --- UI LOGIC ---
         function toggleModal(show) {
             document.getElementById('modalOverlay').style.display = show ? 'flex' : 'none';
-            if(show && document.querySelector('.tab.active').innerText === 'ARQUIVOS') refreshFiles();
+            // Verifica a aba ativa ao abrir o modal
+            if(show) {
+                const activeTab = document.querySelector('.tab.active');
+                if (activeTab && activeTab.innerText === 'ARQUIVOS') refreshFiles();
+            }
         }
 
         function setTab(id, el) {
@@ -310,25 +335,20 @@
         }
 
         // -----------------------------------------------------------
-        // --- FILES LOGIC (V5.4: Path Traversal Fix e Navegação) ---
+        // --- FILES LOGIC (Navegação e Arquivos) ---
         // -----------------------------------------------------------
         
         function changePath(newSegment) {
             if (newSegment === '..') {
-                // Lógica segura para subir um nível: remove o último segmento.
                 const pathSegments = currentPath.split('/').filter(s => s.length > 0);
                 pathSegments.pop(); 
-                
-                // Reconstrói o caminho. Se não houver segmentos, é a raiz '/'.
                 currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
             } else if (newSegment === '/') {
                 currentPath = '/';
             } else {
-                // Navega para o filho (entra na pasta)
                 currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
             }
             
-            // Normalização final para garantir que o formato seja consistente (ex: /src/pasta/)
             currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
             if (currentPath === '//') currentPath = '/';
             
@@ -336,7 +356,6 @@
         }
 
         function renderPathDisplay() {
-            // Mostra o prefixo do bot mais o caminho atual
             document.getElementById('currentPathDisplay').innerText = '/user_bot' + currentPath;
         }
 
@@ -346,9 +365,7 @@
             container.innerHTML = 'Buscando arquivos...';
             
             try {
-                // Envia o caminho atual, que o backend validará
                 const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
-                
                 let files;
                 
                 if (res.ok) {
@@ -360,7 +377,6 @@
 
                 container.innerHTML = '';
                 
-                // 1. Adicionar o link para Voltar (..)
                 if (currentPath !== '/') {
                     const backDiv = document.createElement('div');
                     backDiv.className = 'file-item';
@@ -369,7 +385,6 @@
                     container.appendChild(backDiv);
                 }
 
-                // 2. Adicionar a lista de arquivos e pastas
                 files.forEach(f => {
                     const isDir = f.isDir;
                     const div = document.createElement('div');
@@ -385,7 +400,6 @@
                             </div>
                         `;
                     } else {
-                        // Arquivos não clicáveis (apenas para deletar)
                         div.onclick = () => {}; 
                         div.innerHTML = `
                             <div class="file-name">📄 ${f.name}</div>
@@ -403,7 +417,6 @@
                 }
 
             } catch(e) {
-                // Exibe o erro do backend de forma clara
                 container.innerHTML = `<div style="color:red; text-align:center;">Erro ao carregar lista. ${e.message}</div>`;
             }
         }
@@ -411,7 +424,6 @@
         async function deleteFile(name) {
             if(!confirm(`Deletar ${currentPath}${name}?`)) return;
             
-            // Envia o caminho completo para o backend
             await fetch('/files/delete', {
                 method: 'DELETE', 
                 headers: {'Content-Type':'application/json'}, 
@@ -426,7 +438,6 @@
 
             const formData = new FormData();
             formData.append('file', file);
-            // ENVIAMOS O CAMINHO ATUAL para que o backend salve no local correto.
             formData.append('currentPath', currentPath); 
 
             await fetch('/files/upload', { method: 'POST', body: formData });
@@ -435,6 +446,24 @@
         }
         
         // --- DEPLOY LOGIC ---
+        
+        // NOVO: DEPLOY PARA BOTS PRONTOS
+        function deployPreset(url, name) {
+            if(!confirm(`Tem certeza que deseja apagar tudo e instalar o ${name}?`)) return;
+            
+            toggleModal(false);
+            
+            fetch('/deploy/git', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    repoUrl: url,
+                    installDeps: true, // Sempre instala dependencias para bots prontos
+                    startCommand: '' // O backend tentará descobrir ou usará o default
+                })
+            });
+        }
+        
         async function deployZip() {
             const file = document.getElementById('zipFile').files[0];
             if(!file) return alert("Selecione um ZIP!");
@@ -442,10 +471,15 @@
             const formData = new FormData();
             formData.append('file', file);
             formData.append('startCommand', document.getElementById('zipCmd').value);
-            formData.append('installDeps', document.getElementById('zipDeps').checked);
+            formData.append('installDeps', document.getElementById('zipDeps').checked); // Enviado como 'true' ou 'false' string
 
             toggleModal(false);
-            await fetch('/deploy/zip', { method: 'POST', body: formData });
+            
+            const res = await fetch('/deploy/zip', { method: 'POST', body: formData });
+            if (!res.ok) {
+                 const error = await res.json();
+                 addLogToScreen({type: 'error', text: `Erro no UPLOAD ZIP: ${error.error}`, time: new Date().toLocaleTimeString('pt-BR')});
+            }
         }
 
         async function deployGit() {
@@ -464,4 +498,4 @@
         }
     </script>
 </body>
-                    </html>
+</html>
