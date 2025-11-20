@@ -154,7 +154,7 @@
 <body>
 
     <header>
-        <div class="brand">RED PROTOCOL <span class="status">v5.3</span></div>
+        <div class="brand">RED PROTOCOL <span class="status">v5.4</span></div>
         <button class="btn-icon" onclick="toggleModal(true)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
@@ -280,16 +280,16 @@
         }
 
         // -----------------------------------------------------------
-        // --- FILES LOGIC (CORRIGIDA V5.3: Path Traversal/Navegação) ---
+        // --- FILES LOGIC (V5.4: Path Traversal Fix e Navegação) ---
         // -----------------------------------------------------------
         
         function changePath(newSegment) {
             if (newSegment === '..') {
-                // Lógica aprimorada para subir um nível com segurança:
+                // Lógica segura para subir um nível: remove o último segmento.
                 const pathSegments = currentPath.split('/').filter(s => s.length > 0);
-                pathSegments.pop(); // Remove o último segmento (pasta atual)
+                pathSegments.pop(); 
                 
-                // Reconstrói o caminho. Se for a raiz, é '/'. Senão, é '/pasta/subpasta/'
+                // Reconstrói o caminho. Se não houver segmentos, é a raiz '/'.
                 currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
             } else if (newSegment === '/') {
                 currentPath = '/';
@@ -298,7 +298,7 @@
                 currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
             }
             
-            // Normalização final (Remove barras duplas e garante que comece/termine com barra)
+            // Normalização final para garantir que o formato seja consistente (ex: /src/pasta/)
             currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
             if (currentPath === '//') currentPath = '/';
             
@@ -306,6 +306,7 @@
         }
 
         function renderPathDisplay() {
+            // Mostra o prefixo do bot mais o caminho atual
             document.getElementById('currentPathDisplay').innerText = '/user_bot' + currentPath;
         }
 
@@ -315,22 +316,21 @@
             container.innerHTML = 'Buscando arquivos...';
             
             try {
+                // Envia o caminho atual, que o backend validará
                 const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
                 
                 let files;
                 
-                // ⚠️ VERIFICAÇÃO CRÍTICA DO STATUS HTTP para evitar forEach em objetos de erro
                 if (res.ok) {
                     files = await res.json();
                 } else {
-                    // Se o status não for OK (404, 500, etc.), lança um erro com a mensagem do backend
                     const errorData = await res.json();
                     throw new Error(errorData.error || `Erro HTTP: ${res.status}`);
                 }
 
                 container.innerHTML = '';
                 
-                // 1. Adicionar o link para Voltar (..) se não estiver na raiz
+                // 1. Adicionar o link para Voltar (..)
                 if (currentPath !== '/') {
                     const backDiv = document.createElement('div');
                     backDiv.className = 'file-item';
@@ -404,7 +404,7 @@
             refreshFiles(); 
         }
         
-        // --- DEPLOY LOGIC (MANTIDA) ---
+        // --- DEPLOY LOGIC ---
         async function deployZip() {
             const file = document.getElementById('zipFile').files[0];
             if(!file) return alert("Selecione um ZIP!");
