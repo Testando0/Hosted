@@ -154,7 +154,7 @@
 <body>
 
     <header>
-        <div class="brand">RED PROTOCOL <span class="status">v5.1</span></div>
+        <div class="brand">RED PROTOCOL <span class="status">v5.2</span></div>
         <button class="btn-icon" onclick="toggleModal(true)">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
         </button>
@@ -279,17 +279,27 @@
             if(id === 'files') refreshFiles();
         }
 
-        // --- FILES LOGIC (ATUALIZADO PARA NAVEGAÇÃO) ---
+        // ------------------------------------
+        // --- FILES LOGIC (CORRIGIDA V5.2) ---
+        // ------------------------------------
+        
         function changePath(newSegment) {
             if (newSegment === '..') {
-                // Navega para o pai: remove o último segmento após a última barra
-                currentPath = currentPath.substring(0, currentPath.lastIndexOf('/', currentPath.length - 2) + 1);
+                // Navega para o pai: remove o último segmento
+                const pathSegments = currentPath.split('/').filter(s => s.length > 0);
+                pathSegments.pop(); 
+                currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
             } else if (newSegment === '/') {
                 currentPath = '/';
             } else {
-                // Navega para o filho: adiciona o novo segmento
-                currentPath += newSegment + '/';
+                // Navega para o filho
+                currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
             }
+            
+            // Normalização final para garantir o formato (ex: /src/pasta/)
+            currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
+            if (currentPath === '//') currentPath = '/';
+            
             refreshFiles();
         }
 
@@ -304,8 +314,18 @@
             
             try {
                 const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
-                const files = await res.json();
                 
+                let files;
+                
+                // ⚠️ VERIFICAÇÃO CRÍTICA DO STATUS HTTP para evitar forEach em objetos de erro
+                if (res.ok) {
+                    files = await res.json();
+                } else {
+                    // Se o status não for OK (404, 500, etc.), lança um erro com a mensagem do backend
+                    const errorData = await res.json();
+                    throw new Error(errorData.error || `Erro HTTP: ${res.status}`);
+                }
+
                 container.innerHTML = '';
                 
                 // 1. Adicionar o link para Voltar (..) se não estiver na raiz
@@ -347,10 +367,11 @@
                 });
 
                 if(files.length === 0 && currentPath === '/') {
-                    container.innerHTML += '<div style="text-align:center; color:#666; margin-top:20px;">Pasta raiz vazia.</div>';
+                    container.innerHTML += '<div style="text-align:center; color:#666; margin-top:20px;">Pasta raiz vazia</div>';
                 }
 
             } catch(e) {
+                // Exibe o erro do backend de forma clara
                 container.innerHTML = `<div style="color:red; text-align:center;">Erro ao carregar lista. ${e.message}</div>`;
             }
         }
@@ -358,6 +379,7 @@
         async function deleteFile(name) {
             if(!confirm(`Deletar ${currentPath}${name}?`)) return;
             
+            // Envia o caminho completo para o backend
             await fetch('/files/delete', {
                 method: 'DELETE', 
                 headers: {'Content-Type':'application/json'}, 
