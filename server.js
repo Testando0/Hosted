@@ -23,9 +23,9 @@ const storageZip = multer.diskStorage({
 });
 const uploadZip = multer({ storage: storageZip });
 
-// Configuração Multer (Arquivos Avulsos)
+// Configuração Multer (Arquivos Avulsos) - Salva temporariamente
 const storageFile = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR), // Salva temporariamente
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => cb(null, file.originalname)
 });
 const uploadFile = multer({ storage: storageFile });
@@ -50,14 +50,14 @@ function getSafeAbsolutePath(clientPath) {
     if (typeof clientPath !== 'string') clientPath = '';
     
     // 1. Resolve o caminho RELATIVO ao BOT_DIR. Isso trata '..' e barras.
-    // path.join resolve o caminho corretamente dentro do BOT_DIR
+    // path.join junta BOT_DIR e clientPath, tratando a diferença de barras.
     const targetPath = path.join(BOT_DIR, clientPath);
 
-    // 2. Resolve o caminho para sua forma final (absoluta)
+    // 2. Resolve o caminho para sua forma final (absoluta e limpa).
     const resolvedPath = path.resolve(targetPath);
     
     // 3. CRÍTICO: Verifica se o resolvedPath ainda está dentro do BOT_DIR.
-    // Usamos path.normalize para remover a barra final do BOT_DIR para comparação segura.
+    // Usamos path.normalize em BOT_DIR para remover a barra final para comparação segura.
     const botDirNormalized = path.normalize(BOT_DIR);
     
     if (!resolvedPath.startsWith(botDirNormalized)) {
@@ -67,14 +67,13 @@ function getSafeAbsolutePath(clientPath) {
     return resolvedPath;
 }
 
-// --- ROTAS DO FILE MANAGER ---
+// --- ROTAS DO FILE MANAGER (CORRIGIDAS) ---
 
 // 1. Listar Arquivos
 app.get('/files/list', async (req, res) => {
     try {
-        // Recebe o caminho a ser listado (ex: '/src/' ou '/')
         const clientPath = req.query.path || '/'; 
-        const targetDir = getSafeAbsolutePath(clientPath); // Usa a função corrigida
+        const targetDir = getSafeAbsolutePath(clientPath); 
         
         if(!fs.existsSync(targetDir)) return res.status(404).json({ error: 'Diretório não encontrado.' });
         if(!fs.statSync(targetDir).isDirectory()) return res.status(400).json({ error: 'Caminho não é um diretório.' });
@@ -99,7 +98,6 @@ app.get('/files/list', async (req, res) => {
         
         res.json(fileData);
     } catch (e) {
-        // Adicionada verificação específica para garantir que a mensagem de Path Traversal seja retornada
         const message = e.message.includes("Path Traversal") ? e.message : `Erro interno: ${e.message}`;
         addLog('error', `Erro ao listar: ${message}`);
         res.status(500).json({ error: message });
@@ -112,21 +110,15 @@ app.delete('/files/delete', async (req, res) => {
         const { name, currentPath } = req.body;
         if (!name || !currentPath) return res.status(400).json({ error: 'Caminho ou nome inválido' });
 
-        // ⚠️ CRÍTICO: Constrói o caminho completo e limpo para o alvo.
-        // Se currentPath for '/src/' e name for 'index.js', clientPath é 'src/index.js'
-        // Se currentPath for '/' e name for 'src', clientPath é 'src'
         const clientPathToDelete = path.join(currentPath, name);
-
-        // Usa a função segura para obter o caminho absoluto e validado.
         const targetPath = getSafeAbsolutePath(clientPathToDelete);
         
-        // Proteção: Não deletar a pasta raiz do bot (se tentarem deletar '/')
         if (targetPath === path.resolve(BOT_DIR)) {
             throw new Error("Não é possível deletar a raiz do diretório do bot.");
         }
 
         await fs.remove(targetPath);
-        addLog('warn', `Deletado: ${path.join(currentPath, name)}`); // Loga o caminho limpo do cliente
+        addLog('warn', `Deletado: ${path.join(currentPath, name)}`);
         res.json({ success: true });
     } catch (e) {
         const message = e.message.includes("Path Traversal") ? e.message : `Erro ao deletar: ${e.message}`;
@@ -135,30 +127,26 @@ app.delete('/files/delete', async (req, res) => {
     }
 });
 
-// 3. Upload de Arquivo Único (Atualizado para lidar com BOT_DIR dinâmico)
+// 3. Upload de Arquivo Único
 app.post('/files/upload', uploadFile.single('file'), async (req, res) => {
     if (!req.file || !req.body.currentPath) {
-        // Limpa o temporário se o request for ruim.
         if (req.file) await fs.remove(req.file.path); 
         return res.status(400).json({ error: 'Nenhum arquivo enviado ou caminho faltante.' });
     }
     
     try {
-        const clientPath = req.body.currentPath; // Caminho de destino (ex: '/src/')
+        const clientPath = req.body.currentPath;
         const targetDir = getSafeAbsolutePath(clientPath);
 
-        // O arquivo foi salvo temporariamente em UPLOAD_DIR
         const originalFilePath = path.join(UPLOAD_DIR, req.file.originalname);
         const finalFilePath = path.join(targetDir, req.file.originalname);
         
-        // Move o arquivo do temporário para o destino seguro validado
         await fs.move(originalFilePath, finalFilePath, { overwrite: true });
 
         addLog('info', `Upload para: ${clientPath}${req.file.originalname}`);
         res.json({ success: true });
 
     } catch (e) {
-        // Limpa o arquivo temporário em caso de erro na lógica de mover/segurança
         if (req.file) await fs.remove(req.file.path); 
         const message = e.message.includes("Path Traversal") ? e.message : `Erro no upload: ${e.message}`;
         addLog('error', message);
@@ -166,12 +154,14 @@ app.post('/files/upload', uploadFile.single('file'), async (req, res) => {
     }
 });
 
-// --- FUNÇÕES AUXILIARES E DEPLOY (MANTIDAS) ---
+// --- FUNÇÕES AUXILIARES E DEPLOY ---
 
-// --- SOCKET.IO ---
+// --- SOCKET.IO (LOGIC OFICIAL DO BOT) ---
 io.on('connection', (socket) => {
+    // 1. Envia o histórico ao conectar
     socket.emit('log-history', logHistory);
 
+    // 2. RECEBE COMANDO DO TERMINAL
     socket.on('terminal-input', (cmd) => {
         if (currentBotProcess && !currentBotProcess.killed) {
             try {
@@ -184,6 +174,14 @@ io.on('connection', (socket) => {
             addLog('error', 'O Bot está OFFLINE. Inicie o deploy.');
         }
     });
+
+    // 3. NOVO: RECEBE REQUISIÇÃO DE REINÍCIO DO LOG
+    socket.on('request-log-history', () => {
+        logHistory = []; // Limpa o histórico no servidor
+        addLog('info', 'Histórico de log do servidor foi limpo por comando do painel.');
+        // Reenvia o histórico (agora limpo) para o cliente que solicitou (e ele recarrega a tela)
+        socket.emit('log-history', logHistory); 
+    });
 });
 
 function getTime() { return new Date().toLocaleTimeString('pt-BR'); }
@@ -194,6 +192,7 @@ function addLog(type, text) {
     if (logHistory.length > 50) logHistory.shift();
     logHistory.push(logEntry);
 
+    // Envia a nova mensagem para todos os clientes conectados
     io.emit('log-message', logEntry);
     
     if(type === 'error' || type === 'warn' || type === 'success') {
@@ -205,7 +204,8 @@ async function killBot() {
     if (currentBotProcess) {
         addLog('warn', 'Encerrando processo anterior...');
         try {
-            process.kill(-currentBotProcess.pid);
+            // Tenta matar o grupo de processos (mais robusto)
+            process.kill(-currentBotProcess.pid); 
         } catch (e) {
             try { currentBotProcess.kill(); } catch (err) {}
         }
@@ -233,7 +233,6 @@ app.post('/deploy/git', async (req, res) => {
 
     deployFlow(startCommand, installDeps === 'true', async () => {
         addLog('info', `Clonando ${repoUrl}...`);
-        // O simpleGit limpa e clona no diretório, mas precisamos limpar antes no deployFlow
         await simpleGit().clone(repoUrl, BOT_DIR);
     });
     res.json({ success: true });
