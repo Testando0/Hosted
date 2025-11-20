@@ -1,7 +1,7 @@
 {
-  "name": "cyber-c2-terminal",
-  "version": "2.0.0",
-  "description": "Painel de Controle e Hospedagem de Bot via Upload",
+  "name": "red-protocol-terminal",
+  "version": "3.0.0",
+  "description": "Bot Host C2 Red Theme",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -11,6 +11,7 @@
     "socket.io": "^4.6.1",
     "multer": "^1.4.5-lts.1",
     "adm-zip": "^0.5.10",
-    "fs-extra": "^11.1.1"
+    "fs-extra": "^11.1.1",
+    "simple-git": "^3.16.0"
   }
 }
