@@ -13,160 +13,194 @@ const { spawn } = require('child_process');
 const UPLOAD_DIR = path.join(__dirname, 'temp_uploads');
 const BOT_DIR = path.join(__dirname, 'user_bot');
 
-// Garante pastas limpas na inicialização
+// Garante pastas limpas
 fs.ensureDirSync(UPLOAD_DIR);
 fs.ensureDirSync(BOT_DIR);
 
-// Configuração Upload
-const storage = multer.diskStorage({
+// Configuração Multer para DEPLOY (ZIP)
+const storageZip = multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOAD_DIR),
     filename: (req, file, cb) => cb(null, 'bot_package.zip')
 });
-const upload = multer({ storage: storage });
+const uploadZip = multer({ storage: storageZip });
+
+// Configuração Multer para ARQUIVOS AVULSOS (File Manager)
+const storageFile = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, BOT_DIR),
+    filename: (req, file, cb) => cb(null, file.originalname) // Mantém o nome original
+});
+const uploadFile = multer({ storage: storageFile });
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 let currentBotProcess = null;
 
-// --- SOCKET.IO (COMUNICAÇÃO REAL-TIME) ---
+// --- SOCKET.IO ---
 io.on('connection', (socket) => {
-    systemLog('info', 'Operador conectado ao Painel de Controle [C2].');
-
-    // Recebe comandos do input do site e envia para o Bot (STDIN)
+    // systemLog('info', 'Painel C2 Conectado.'); // Comentado para reduzir spam
     socket.on('terminal-input', (cmd) => {
         if (currentBotProcess && !currentBotProcess.killed) {
             try {
                 currentBotProcess.stdin.write(cmd + '\n');
                 io.emit('log-message', { type: 'input', text: `$ ${cmd}`, time: getTime() });
             } catch (e) {
-                io.emit('log-message', { type: 'error', text: 'Erro ao enviar comando (Processo morto?)', time: getTime() });
+                io.emit('log-message', { type: 'error', text: 'Erro de I/O.', time: getTime() });
             }
         } else {
-            io.emit('log-message', { type: 'error', text: 'Nenhum bot rodando para receber comandos.', time: getTime() });
+            io.emit('log-message', { type: 'error', text: 'Bot offline.', time: getTime() });
         }
     });
 });
 
 function getTime() { return new Date().toLocaleTimeString('pt-BR'); }
-
 function systemLog(type, msg) {
     io.emit('log-message', { type, text: msg, time: getTime() });
-    console.log(`[SYSTEM-${type.toUpperCase()}] ${msg}`);
+    console.log(`[${type.toUpperCase()}] ${msg}`);
 }
 
-// --- FUNÇÕES DE DEPLOY ---
+// --- SEGURANÇA DE ARQUIVOS (Anti-Traversal) ---
+function getSafePath(target) {
+    const resolvedPath = path.resolve(BOT_DIR, target);
+    if (!resolvedPath.startsWith(BOT_DIR)) {
+        throw new Error("Acesso negado: Tentativa de sair do diretório do bot.");
+    }
+    return resolvedPath;
+}
 
-// Rota 1: Deploy via ZIP
-app.post('/deploy/zip', upload.single('file'), async (req, res) => {
-    const { startCommand, installDeps } = req.body;
-    
-    if (!req.file) return res.status(400).json({ error: 'Arquivo ZIP obrigatório.' });
+// --- ROTAS DO FILE MANAGER ---
 
-    // Executa a sequência
+// 1. Listar Arquivos
+app.get('/files/list', async (req, res) => {
+    try {
+        const files = await fs.readdir(BOT_DIR);
+        const fileData = [];
+
+        for (const file of files) {
+            const stats = await fs.stat(path.join(BOT_DIR, file));
+            fileData.push({
+                name: file,
+                isDir: stats.isDirectory(),
+                size: (stats.size / 1024).toFixed(1) + ' KB'
+            });
+        }
+        
+        // Ordena: Pastas primeiro, depois arquivos
+        fileData.sort((a, b) => (a.isDir === b.isDir) ? 0 : a.isDir ? -1 : 1);
+        
+        res.json(fileData);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 2. Deletar Arquivo
+app.delete('/files/delete', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Nome inválido' });
+
+        const targetPath = getSafePath(name);
+        
+        // Proteção extra: Não deletar a pasta raiz do bot
+        if (targetPath === BOT_DIR) throw new Error("Não é possível deletar a raiz.");
+
+        await fs.remove(targetPath);
+        systemLog('warn', `Arquivo deletado via File Manager: ${name}`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 3. Upload de Arquivo Único
+app.post('/files/upload', uploadFile.single('file'), (req, res) => {
+    if (req.file) {
+        systemLog('info', `Upload de arquivo recebido: ${req.file.originalname}`);
+        res.json({ success: true });
+    } else {
+        res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    }
+});
+
+
+// --- ROTAS DE DEPLOY (ZIP / GIT) ---
+
+app.post('/deploy/zip', uploadZip.single('file'), async (req, res) => {
+    let { startCommand, installDeps } = req.body;
+    startCommand = sanitizeCommand(startCommand);
+
+    if (!req.file) return res.status(400).json({ error: 'Arquivo ZIP faltante.' });
+
     await runDeploySequence(startCommand, installDeps === 'true', async () => {
-        systemLog('info', 'Extraindo pacote ZIP...');
+        systemLog('info', 'Extraindo ZIP...');
         const zip = new AdmZip(path.join(UPLOAD_DIR, 'bot_package.zip'));
         zip.extractAllTo(BOT_DIR, true);
     });
-
     res.json({ success: true });
 });
 
-// Rota 2: Deploy via GitHub
 app.post('/deploy/git', async (req, res) => {
-    const { repoUrl, startCommand, installDeps } = req.body;
-
-    if (!repoUrl) return res.status(400).json({ error: 'URL do Git obrigatória.' });
+    let { repoUrl, startCommand, installDeps } = req.body;
+    startCommand = sanitizeCommand(startCommand);
+    
+    if (!repoUrl) return res.status(400).json({ error: 'URL Git faltante.' });
 
     await runDeploySequence(startCommand, installDeps === 'true', async () => {
-        systemLog('info', `Clonando repositório: ${repoUrl}...`);
+        systemLog('info', `Clonando: ${repoUrl}`);
         await simpleGit().clone(repoUrl, BOT_DIR);
     });
-
     res.json({ success: true });
 });
 
+// --- HELPERS ---
+function sanitizeCommand(cmd) {
+    if (!cmd) return "node index.js"; 
+    if (Array.isArray(cmd)) return String(cmd[0]).trim();
+    return String(cmd).trim();
+}
 
-// --- LÓGICA CENTRAL DE DEPLOY (CORRIGIDA) ---
 async function runDeploySequence(startCmd, shouldInstall, fileHandler) {
     try {
-        // 1. Matar processo antigo BLINDADO
         if (currentBotProcess) {
-            systemLog('warn', 'Encerrando instância anterior...');
-            try {
-                // Tenta matar o processo e seus filhos
-                process.kill(-currentBotProcess.pid);
-            } catch (e) {
-                // Se o erro for ESRCH, significa que já estava morto. Ignoramos.
-                if (e.code !== 'ESRCH') {
-                    systemLog('error', `Erro ao matar processo: ${e.message}`);
-                } else {
-                    systemLog('info', 'Instância anterior já estava encerrada (Zombie process cleaned).');
-                }
-            }
+            systemLog('warn', 'Parando bot anterior...');
+            try { process.kill(-currentBotProcess.pid); } catch (e) { if (e.code !== 'ESRCH') console.log(e); }
+            try { currentBotProcess.kill(); } catch(e) {}
             currentBotProcess = null;
         }
 
-        // 2. Limpar diretório
-        systemLog('warn', 'Limpando diretório do sistema...');
         await fs.emptyDir(BOT_DIR);
-
-        // 3. Colocar arquivos novos (Zip ou Git)
         await fileHandler();
 
-        // 4. Preparar comando final
         let finalCommand = startCmd;
-        
-        // Nota: No Windows 'npm' é cmd, no Linux é direto. O Render é Linux.
         if (shouldInstall) {
-            systemLog('info', 'Instalando dependências (npm install)... aguarde.');
-            finalCommand = `npm install && ${startCmd}`;
+            systemLog('info', 'Instalando dependências...');
+            finalCommand = `npm install && ${finalCommand}`;
         }
 
-        // 5. Iniciar Bot
         startBotProcess(finalCommand);
-
     } catch (error) {
-        systemLog('error', `FALHA CRÍTICA NO DEPLOY: ${error.message}`);
-        console.error(error);
+        systemLog('error', `FALHA DEPLOY: ${error.message}`);
     }
 }
 
 function startBotProcess(command) {
-    systemLog('success', `Inicializando Protocolo: ${command}`);
-
-    // Spawn com shell true
+    systemLog('success', `Executando: ${command}`);
     currentBotProcess = spawn(command, {
         cwd: BOT_DIR,
         shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'] 
+        stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    if (currentBotProcess.stdout) {
-        currentBotProcess.stdout.on('data', (data) => {
-            io.emit('log-message', { type: 'info', text: data.toString().trim(), time: getTime() });
-        });
-    }
-
-    if (currentBotProcess.stderr) {
-        currentBotProcess.stderr.on('data', (data) => {
-            const msg = data.toString().trim();
-            // Filtra avisos chatos do NPM para não poluir o vermelho
-            if(!msg.includes('npm WARN') && !msg.includes('npm notice')) {
-                io.emit('log-message', { type: 'error', text: msg, time: getTime() });
-            }
-        });
-    }
-
-    currentBotProcess.on('close', (code) => {
-        systemLog('warn', `Processo finalizado. Código: ${code}`);
-        // Não definimos null aqui imediatamente para permitir logs finais
+    currentBotProcess.stdout.on('data', (data) => io.emit('log-message', { type: 'info', text: data.toString().trim(), time: getTime() }));
+    currentBotProcess.stderr.on('data', (data) => {
+        const msg = data.toString().trim();
+        if (!msg.includes('npm WARN') && !msg.includes('npm notice')) {
+            io.emit('log-message', { type: 'error', text: msg, time: getTime() });
+        }
     });
+    currentBotProcess.on('close', (code) => systemLog('warn', `Processo saiu: ${code}`));
 }
 
-// Porta do Render
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`RED PROTOCOL STARTED ON PORT ${PORT}`);
-});
+http.listen(PORT, () => { console.log(`SERVER ONLINE: ${PORT}`); });
