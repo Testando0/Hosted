@@ -2,179 +2,466 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>REDHOSTING - MANAGER</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>REDHOSTING</title>
     <script src="/socket.io/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #050505; --panel: #111; --primary: #ff0033; --text: #eee; }
-        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
-        body { background: var(--bg); color: var(--text); font-family: 'Fira Code', monospace; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        /* --- VARIAVEIS E RESET --- */
+        :root {
+            --bg: #050505; --panel: #0f0f0f;
+            --primary: #ff0033; --dim: #661122;
+            --text: #eee; --gray: #666;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; }
         
-        header { height: 50px; background: var(--panel); border-bottom: 2px solid var(--primary); display: flex; align-items: center; justify-content: space-between; padding: 0 15px; }
-        .brand { color: var(--primary); font-weight: bold; letter-spacing: 1px; }
+        body { 
+            background: var(--bg); color: var(--text); 
+            font-family: 'Fira Code', monospace; 
+            height: 100vh; height: 100dvh;
+            display: flex; flex-direction: column; 
+            overflow: hidden;
+        }
+
+        /* GRID EFFECT */
+        body::before {
+            content: ""; position: absolute; inset: 0;
+            background: linear-gradient(transparent 95%, var(--dim) 100%), linear-gradient(90deg, transparent 95%, var(--dim) 100%);
+            background-size: 20px 20px; opacity: 0.1; z-index: -1; pointer-events: none;
+        }
+
+        /* HEADER */
+        header {
+            height: 55px; background: var(--panel);
+            border-bottom: 2px solid var(--primary);
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 15px; z-index: 10;
+            box-shadow: 0 2px 15px rgba(255, 0, 51, 0.15);
+        }
+        .brand { font-weight: 700; color: var(--primary); font-size: 1rem; letter-spacing: 1px; }
+
+        .header-actions {
+            display: flex; gap: 10px;
+        }
         
-        .terminal { flex: 1; padding: 10px; overflow-y: auto; font-size: 0.85rem; background: rgba(0,0,0,0.5); }
-        .log { margin-bottom: 4px; border-left: 2px solid transparent; padding-left: 5px; word-wrap: break-word; }
-        .log.type-info { color: #ccc; }
-        .log.type-error { color: #ff4444; background: rgba(255,0,0,0.1); border-color: red; }
+        .btn-icon {
+            background: none; border: 1px solid var(--primary);
+            color: var(--primary); padding: 6px; border-radius: 4px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; /* Para o texto "REINICIAR" */
+            font-family: inherit;
+        }
+        .btn-icon:active { background: var(--primary); color: #000; }
+        .btn-icon-svg { padding: 6px; } /* Mantém o ícone de engrenagem com padding padrão */
+
+        /* TERMINAL AREA */
+        .terminal {
+            flex: 1; background: rgba(0,0,0,0.3);
+            padding: 10px; overflow-y: auto; overflow-x: hidden;
+            font-size: 0.85rem; display: flex; flex-direction: column;
+        }
+        .log { 
+            margin-bottom: 6px; word-wrap: break-word; line-height: 1.4; 
+            border-left: 2px solid transparent; padding-left: 5px;
+        }
+        .ts { color: var(--gray); font-size: 0.7rem; margin-right: 5px; display: inline-block; min-width: 60px;}
+        
+        .log.type-info { border-color: #444; }
+        .log.type-error { color: #ff4444; border-color: #ff0000; background: rgba(255,0,0,0.05); }
         .log.type-success { color: #00ff66; border-color: #00ff66; }
         .log.type-warn { color: #ffcc00; }
-        .ts { color: #666; margin-right: 8px; font-size: 0.7rem; }
+        .log.type-input { color: #888; font-style: italic; }
 
-        .input-area { padding: 10px; background: var(--panel); display: flex; gap: 10px; }
-        input { flex: 1; background: #000; border: 1px solid #333; color: #fff; padding: 10px; font-family: inherit; }
-        button { cursor: pointer; background: var(--primary); border: none; color: #000; font-weight: bold; padding: 0 15px; }
-
-        /* MODAL */
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; align-items: center; justify-content: center; }
-        .modal { width: 90%; max-width: 600px; background: #0f0f0f; border: 1px solid var(--primary); border-radius: 5px; display: flex; flex-direction: column; height: 80vh; }
-        .modal-header { padding: 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; }
-        .close { cursor: pointer; font-size: 1.5rem; }
-
-        .tabs { display: flex; background: #000; }
-        .tab { flex: 1; padding: 15px; text-align: center; color: #666; cursor: pointer; border-bottom: 2px solid transparent; }
-        .tab.active { color: var(--primary); border-color: var(--primary); background: #1a0505; }
-
-        .content { padding: 20px; overflow-y: auto; flex: 1; display: none; }
-        .content.show { display: block; }
-
-        /* CARDS DE BOTS PRONTOS */
-        .bot-list { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .bot-card { 
-            background: #1a1a1a; border: 1px solid #333; padding: 15px; 
-            border-radius: 8px; cursor: pointer; transition: 0.2s; text-align: center;
+        /* INPUT BAR */
+        .input-area {
+            background: var(--panel); padding: 10px;
+            border-top: 1px solid #333; display: flex; gap: 10px;
         }
-        .bot-card:hover { border-color: var(--primary); transform: translateY(-2px); background: #222; }
-        .bot-card h3 { margin-bottom: 5px; color: #fff; }
-        .bot-card p { font-size: 0.8rem; color: #888; }
-        .bot-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
+        #cmdInput {
+            flex: 1; background: #000; border: 1px solid #333;
+            color: var(--primary); padding: 10px; border-radius: 4px;
+            font-family: inherit; font-size: 1rem;
+        }
+        #cmdInput:focus { border-color: var(--primary); }
+        
+        .btn-send {
+            background: var(--primary); color: #000; border: none;
+            padding: 0 15px; font-weight: bold; border-radius: 4px; cursor: pointer;
+        }
+
+        /* MODAL (FULLSCREEN ON MOBILE) */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(5px); z-index: 100;
+            display: none; justify-content: center; align-items: center;
+        }
+        .modal {
+            width: 95%; max-width: 600px; max-height: 90vh;
+            background: #111; border: 1px solid var(--primary);
+            display: flex; flex-direction: column;
+            box-shadow: 0 0 30px rgba(255, 0, 51, 0.2);
+            border-radius: 6px; overflow: hidden;
+        }
+        .modal-header {
+            padding: 15px; background: #1a1a1a; border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .close-btn { font-size: 1.5rem; color: #fff; cursor: pointer; padding: 0 10px; }
+
+        /* TABS */
+        .tabs { display: flex; background: #000; border-bottom: 1px solid #333; }
+        .tab {
+            flex: 1; text-align: center; padding: 12px; color: #666;
+            border-bottom: 2px solid transparent; cursor: pointer; font-size: 0.9rem;
+        }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); background: rgba(255,0,51,0.05); }
+
+        /* CONTENT AREAS */
+        .content-area { padding: 15px; overflow-y: auto; display: none; }
+        .content-area.show { display: block; }
+        
+        /* Forms... */
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; }
+        .form-input {
+            width: 100%; padding: 12px; background: #000; border: 1px solid #333;
+            color: #fff; border-radius: 4px; font-family: inherit;
+        }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 10px; margin: 15px 0; }
+        .checkbox-wrapper input { width: 20px; height: 20px; accent-color: var(--primary); }
+        
+        .btn-full {
+            width: 100%; padding: 14px; background: var(--primary);
+            color: #000; border: none; font-weight: bold; border-radius: 4px;
+            font-size: 1rem; cursor: pointer; margin-top: 10px;
+        }
+        
+        /* FILE LIST */
+        .file-list-header { color: #aaa; font-size: 0.8rem; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .file-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid #222; cursor: pointer;
+        }
+        .file-item:hover { background: rgba(255,0,51,0.05); }
+        
+        .file-name { color: #ddd; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 3; }
+        .file-size { color: #aaa; font-size: 0.8rem; flex: 1; text-align: right; padding-right: 10px; }
+        .file-actions { flex: 1; text-align: right; }
+        
+        .file-actions button {
+            background: none; border: 1px solid #333; color: #ff4444;
+            padding: 5px 10px; border-radius: 4px; margin-left: 5px; font-size: 0.8rem;
+        }
+        .icon-dir { color: #ffcc00; margin-right: 5px; }
+        .icon-up { color: #00ff66; margin-right: 5px; }
+
 
     </style>
 </head>
 <body>
+
     <header>
-        <div class="brand">REDHOSTING</div>
-        <button onclick="toggleModal(true)" style="background:transparent; border:1px solid var(--primary); color:var(--primary)">⚙️ CONFIG</button>
+        <div class="brand">REDHOSTING </span></div>
+        <div class="header-actions">
+            <button class="btn-icon" onclick="reloadTerminalLogs()">
+                REINICIAR
+            </button>
+            
+            <button class="btn-icon btn-icon-svg" onclick="toggleModal(true)">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </button>
+        </div>
     </header>
 
     <div class="terminal" id="terminal">
-        <div class="log type-info">Conectando ao sistema...</div>
+        <div class="log type-info">-- RED SYSTEM READY --</div>
+        <div class="log type-warn">Aguardando conexão...</div>
     </div>
 
     <div class="input-area">
-        <input type="text" id="cmd" placeholder="Comando...">
-        <button onclick="send()">Enviar</button>
+        <input type="text" id="cmdInput" placeholder="Comando..." autocomplete="off">
+        <button class="btn-send" onclick="sendCommand()">></button>
     </div>
 
-    <div class="modal-overlay" id="modal">
+    <div class="modal-overlay" id="modalOverlay">
         <div class="modal">
             <div class="modal-header">
-                <h3>PAINEL DE CONTROLE</h3>
-                <span class="close" onclick="toggleModal(false)">&times;</span>
+                <h3>CONFIGURAÇÃO</h3>
+                <span class="close-btn" onclick="toggleModal(false)">&times;</span>
             </div>
             
             <div class="tabs">
-                <div class="tab active" onclick="setTab('bots', this)">BOTS PRONTOS</div>
-                <div class="tab" onclick="setTab('custom', this)">GIT CUSTOM</div>
+                <div class="tab active" onclick="setTab('zip', this)">ZIP</div>
+                <div class="tab" onclick="setTab('git', this)">GIT</div>
                 <div class="tab" onclick="setTab('files', this)">ARQUIVOS</div>
             </div>
 
-            <div id="panel-bots" class="content show">
-                <h4 style="margin-bottom:15px; color:#aaa;">Selecione um bot para instalar automaticamente:</h4>
-                <div class="bot-list">
-                    <div class="bot-card" onclick="deployPreset('https://github.com/bronxys/Black.git', 'Black')">
-                        <span class="bot-icon">🕷️</span>
-                        <h3>BLACK</h3>
-                        <p>Bot completo e versátil.</p>
-                    </div>
-
-                    <div class="bot-card" onclick="deployPreset('https://github.com/bronxys/Nazuna.git', 'Nazuna')">
-                        <span class="bot-icon">🌸</span>
-                        <h3>NAZUNA</h3>
-                        <p>Bot focado em interação.</p>
-                    </div>
+            <div id="panel-zip" class="content-area show">
+                <div class="form-group">
+                    <label class="form-label">Arquivo ZIP</label>
+                    <input type="file" id="zipFile" class="form-input" accept=".zip" style="padding:8px">
                 </div>
-                <p style="margin-top:20px; font-size:0.8rem; color:#666; text-align:center;">
-                    ⚠️ Ao clicar, o bot atual será apagado e o novo será instalado.
-                </p>
+                <div class="form-group">
+                    <label class="form-label">Comando de Início</label>
+                    <input type="text" id="zipCmd" value="node index.js" class="form-input">
+                </div>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="zipDeps" checked>
+                    <label>Rodar 'npm install'</label>
+                </div>
+                <button class="btn-full" onclick="deployZip()">UPLOAD & START</button>
             </div>
 
-            <div id="panel-custom" class="content">
-                <p style="margin-bottom:10px">URL do Repositório GitHub:</p>
-                <input type="text" id="gitUrl" placeholder="https://github.com/usuario/repo.git" style="width:100%; margin-bottom:10px;">
-                <button onclick="deployCustom()" style="width:100%; padding:15px;">CLONAR & INICIAR</button>
+            <div id="panel-git" class="content-area">
+                <div class="form-group">
+                    <label class="form-label">Repositório URL</label>
+                    <input type="text" id="gitUrl" placeholder="https://github.com/user/repo" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comando de Início</label>
+                    <input type="text" id="gitCmd" value="node index.js" class="form-input">
+                </div>
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" id="gitDeps" checked>
+                    <label>Rodar 'npm install'</label>
+                </div>
+                <button class="btn-full" onclick="deployGit()">CLONE & START</button>
             </div>
 
-            <div id="panel-files" class="content">
-                <div id="fileList">Carregando...</div>
-                <button onclick="loadFiles()" style="margin-top:10px; width:100%; background:#333; color:#fff;">Atualizar Lista</button>
+            <div id="panel-files" class="content-area">
+                <div class="file-list-header">Caminho Atual: <span id="currentPathDisplay">/</span></div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn-full" style="background:#333; color:#fff; flex:1" onclick="refreshFiles()">ATUALIZAR</button>
+                    <input type="file" id="uploadSingle" style="display:none" onchange="uploadSingleFile(this)">
+                    <button class="btn-full" style="background:#555; color:#fff; flex:1" onclick="document.getElementById('uploadSingle').click()">UPLOAD</button>
+                </div>
+                
+                <div id="fileListContainer" style="overflow-y: auto;">
+                    </div>
             </div>
         </div>
     </div>
 
     <script>
         const socket = io();
-        const term = document.getElementById('terminal');
+        const terminal = document.getElementById('terminal');
+        let currentPath = '/'; // Estado central para a navegação de arquivos
+        
+        // --- SOCKET EVENTS ---
+        socket.on('log-history', (history) => {
+            terminal.innerHTML = ''; // Limpa antes de carregar o histórico
+            history.forEach(addLogToScreen);
+        });
 
-        // LOGS
-        socket.on('log-history', h => { term.innerHTML = ''; h.forEach(addLog); });
-        socket.on('log-message', addLog);
+        socket.on('log-message', (data) => {
+            addLogToScreen(data);
+        });
 
-        function addLog(msg) {
+        function addLogToScreen(data) {
             const div = document.createElement('div');
-            div.className = `log type-${msg.type}`;
-            div.innerHTML = `<span class="ts">${msg.time}</span>${msg.text}`;
-            term.appendChild(div);
-            term.scrollTop = term.scrollHeight;
+            div.className = `log type-${data.type}`;
+            div.innerHTML = `<span class="ts">${data.time}</span>${data.text}`;
+            terminal.appendChild(div);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+        
+        // --- FUNÇÃO PARA REINICIAR O TERMINAL ---
+        function reloadTerminalLogs() {
+            // 1. Limpa o DOM do terminal
+            terminal.innerHTML = ''; 
+            
+            // 2. Adiciona as mensagens iniciais
+            addLogToScreen({ type: 'info', text: '-- REINICIANDO LOG DO PAINEL --', time: new Date().toLocaleTimeString('pt-BR') });
+            
+            // 3. Pede ao servidor para reenviar o histórico de logs (se o servidor suportar)
+            // No seu server.js atual, a conexão já emite o histórico.
+            // Para garantir a sincronia, podemos emitir um evento.
+            // Para o seu código, a melhor forma de forçar o reenvio é desconectar/reconectar, mas vamos 
+            // simplificar e pedir o histórico diretamente, assumindo que o server.js pode ser modificado para escutar este evento.
+            socket.emit('request-log-history');
         }
 
-        // COMANDOS
-        function send() {
-            const inp = document.getElementById('cmd');
-            if(inp.value) { socket.emit('terminal-input', inp.value); inp.value = ''; }
+
+        // --- COMMANDS ---
+        function sendCommand() {
+            const input = document.getElementById('cmdInput');
+            const cmd = input.value.trim();
+            if(cmd) {
+                socket.emit('terminal-input', cmd);
+                input.value = '';
+            }
+        }
+        document.getElementById('cmdInput').addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') sendCommand();
+        });
+
+        // --- UI LOGIC ---
+        function toggleModal(show) {
+            document.getElementById('modalOverlay').style.display = show ? 'flex' : 'none';
+            if(show && document.querySelector('.tab.active').innerText === 'ARQUIVOS') refreshFiles();
         }
 
-        // UI TABS
-        function toggleModal(s) { document.getElementById('modal').style.display = s ? 'flex' : 'none'; }
         function setTab(id, el) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.content').forEach(c => c.classList.remove('show'));
+            document.querySelectorAll('.content-area').forEach(c => c.classList.remove('show'));
             el.classList.add('active');
-            document.getElementById('panel-'+id).classList.add('show');
-            if(id === 'files') loadFiles();
+            document.getElementById(`panel-${id}`).classList.add('show');
+            if(id === 'files') refreshFiles();
         }
 
-        // FUNÇÃO DEPLOY PRESET (BLACK / NAZUNA)
-        function deployPreset(url, name) {
-            if(!confirm(`Tem certeza que deseja apagar tudo e instalar o ${name}?`)) return;
+        // -----------------------------------------------------------
+        // --- FILES LOGIC (V5.4: Path Traversal Fix e Navegação) ---
+        // -----------------------------------------------------------
+        
+        function changePath(newSegment) {
+            if (newSegment === '..') {
+                // Lógica segura para subir um nível: remove o último segmento.
+                const pathSegments = currentPath.split('/').filter(s => s.length > 0);
+                pathSegments.pop(); 
+                
+                // Reconstrói o caminho. Se não houver segmentos, é a raiz '/'.
+                currentPath = pathSegments.length === 0 ? '/' : '/' + pathSegments.join('/') + '/';
+            } else if (newSegment === '/') {
+                currentPath = '/';
+            } else {
+                // Navega para o filho (entra na pasta)
+                currentPath = currentPath.endsWith('/') ? currentPath + newSegment + '/' : currentPath + '/' + newSegment + '/';
+            }
             
-            toggleModal(false);
+            // Normalização final para garantir que o formato seja consistente (ex: /src/pasta/)
+            currentPath = '/' + currentPath.replace(/^\/|\/$/g, '').replace(/\/\//g, '/') + '/';
+            if (currentPath === '//') currentPath = '/';
             
-            fetch('/deploy/git', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    repoUrl: url,
-                    installDeps: true // Sempre instala dependencias para bots prontos
-                })
+            refreshFiles();
+        }
+
+        function renderPathDisplay() {
+            // Mostra o prefixo do bot mais o caminho atual
+            document.getElementById('currentPathDisplay').innerText = '/user_bot' + currentPath;
+        }
+
+        async function refreshFiles() {
+            const container = document.getElementById('fileListContainer');
+            renderPathDisplay();
+            container.innerHTML = 'Buscando arquivos...';
+            
+            try {
+                // Envia o caminho atual, que o backend validará
+                const res = await fetch(`/files/list?path=${encodeURIComponent(currentPath)}`);
+                
+                let files;
+                
+                if (res.ok) {
+                    files = await res.json();
+                } else {
+                    const errorData = await res.json();
+                    throw new Error(errorData.error || `Erro HTTP: ${res.status}`);
+                }
+
+                container.innerHTML = '';
+                
+                // 1. Adicionar o link para Voltar (..)
+                if (currentPath !== '/') {
+                    const backDiv = document.createElement('div');
+                    backDiv.className = 'file-item';
+                    backDiv.onclick = () => changePath('..');
+                    backDiv.innerHTML = `<div class="file-name"><span class="icon-up">⬆️</span> ..</div><div class="file-size"></div><div class="file-actions"></div>`;
+                    container.appendChild(backDiv);
+                }
+
+                // 2. Adicionar a lista de arquivos e pastas
+                files.forEach(f => {
+                    const isDir = f.isDir;
+                    const div = document.createElement('div');
+                    div.className = 'file-item';
+                    
+                    if (isDir) {
+                        div.onclick = () => changePath(f.name);
+                        div.innerHTML = `
+                            <div class="file-name"><span class="icon-dir">📁</span> ${f.name}</div>
+                            <div class="file-size">-</div>
+                            <div class="file-actions">
+                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
+                            </div>
+                        `;
+                    } else {
+                        // Arquivos não clicáveis (apenas para deletar)
+                        div.onclick = () => {}; 
+                        div.innerHTML = `
+                            <div class="file-name">📄 ${f.name}</div>
+                            <div class="file-size">${f.size}</div>
+                            <div class="file-actions">
+                                <button onclick="event.stopPropagation(); deleteFile('${f.name}')">Del</button>
+                            </div>
+                        `;
+                    }
+                    container.appendChild(div);
+                });
+
+                if(files.length === 0 && currentPath === '/') {
+                    container.innerHTML += '<div style="text-align:center; color:#666; margin-top:20px;">Pasta raiz vazia</div>';
+                }
+
+            } catch(e) {
+                // Exibe o erro do backend de forma clara
+                container.innerHTML = `<div style="color:red; text-align:center;">Erro ao carregar lista. ${e.message}</div>`;
+            }
+        }
+
+        async function deleteFile(name) {
+            if(!confirm(`Deletar ${currentPath}${name}?`)) return;
+            
+            // Envia o caminho completo para o backend
+            await fetch('/files/delete', {
+                method: 'DELETE', 
+                headers: {'Content-Type':'application/json'}, 
+                body: JSON.stringify({ name: name, currentPath: currentPath })
             });
+            refreshFiles();
         }
 
-        // FUNÇÃO DEPLOY CUSTOM
-        function deployCustom() {
-            const url = document.getElementById('gitUrl').value;
-            if(!url) return alert('Coloque a URL!');
-            deployPreset(url, 'Custom Bot');
+        async function uploadSingleFile(input) {
+            const file = input.files[0];
+            if(!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            // ENVIAMOS O CAMINHO ATUAL para que o backend salve no local correto.
+            formData.append('currentPath', currentPath); 
+
+            await fetch('/files/upload', { method: 'POST', body: formData });
+            input.value = ''; 
+            refreshFiles(); 
+        }
+        
+        // --- DEPLOY LOGIC ---
+        async function deployZip() {
+            const file = document.getElementById('zipFile').files[0];
+            if(!file) return alert("Selecione um ZIP!");
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('startCommand', document.getElementById('zipCmd').value);
+            formData.append('installDeps', document.getElementById('zipDeps').checked);
+
+            toggleModal(false);
+            await fetch('/deploy/zip', { method: 'POST', body: formData });
         }
 
-        // LISTAR ARQUIVOS
-        async function loadFiles() {
-            const res = await fetch('/files/list');
-            const files = await res.json();
-            const div = document.getElementById('fileList');
-            div.innerHTML = files.length ? files.map(f => `<div>${f.isDir?'📁':'📄'} ${f.name} <small>(${f.size})</small></div>`).join('') : 'Pasta vazia';
+        async function deployGit() {
+            const body = JSON.stringify({
+                repoUrl: document.getElementById('gitUrl').value,
+                startCommand: document.getElementById('gitCmd').value,
+                installDeps: document.getElementById('gitDeps').checked
+            });
+
+            toggleModal(false);
+            await fetch('/deploy/git', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: body
+            });
         }
     </script>
 </body>
-</html>
+                    </html>
