@@ -3,154 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C2 BOT HOST /// DEPLOY STATION</title>
+    <title>RED PROTOCOL /// HOST C2</title>
     <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
-        /* --- ESTILOS GERAIS --- */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        /* --- CORE THEME: RED & BLACK --- */
+        :root {
+            --bg-color: #050505;
+            --panel-bg: #0a0a0a;
+            --primary: #ff0033; /* Vermelho Laser */
+            --secondary: #590012; /* Vinho Escuro */
+            --text-main: #ffe6ea;
+            --text-dim: #884444;
+            --scanline: rgba(255, 0, 51, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        
         body {
-            background-color: #050505; color: #00ffcc;
-            font-family: 'Courier New', Courier, monospace;
-            height: 100vh; overflow: hidden;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background-color: var(--bg-color);
+            color: var(--primary);
+            font-family: 'Fira Code', monospace;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* --- PAINEL DE CONTROLE (UPLOAD) --- */
-        .control-panel {
-            width: 90%;
-            margin-bottom: 15px;
+        /* Background Grid Effect */
+        body::after {
+            content: ""; position: absolute; top:0; left:0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(10,0,0,0.9) 90%, var(--secondary) 100%),
+                        linear-gradient(90deg, rgba(20,0,0,1) 50%, transparent 50%);
+            background-size: 100% 2px, 40px 100%;
+            opacity: 0.2; z-index: -1; pointer-events: none;
+        }
+
+        /* --- HEADER --- */
+        header {
+            height: 60px;
+            background: var(--panel-bg);
+            border-bottom: 2px solid var(--secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 5px 20px rgba(255, 0, 51, 0.1);
+        }
+
+        .brand { font-size: 1.2rem; font-weight: 700; letter-spacing: 2px; text-shadow: 0 0 10px var(--primary); }
+        
+        .btn-icon {
+            background: transparent; border: 1px solid var(--secondary);
+            color: var(--primary); padding: 8px; cursor: pointer;
+            border-radius: 4px; transition: 0.3s;
+        }
+        .btn-icon:hover { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
+
+        /* --- TERMINAL AREA --- */
+        .terminal-container {
+            flex: 1;
             padding: 15px;
-            border: 1px solid #333;
-            background: #0a0a0a;
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.05);
-            display: flex; gap: 10px; align-items: center;
-            z-index: 10;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            font-size: 0.9rem;
         }
 
-        input[type="text"] {
-            background: #000; border: 1px solid #333; color: #00ffcc;
-            padding: 10px; font-family: inherit; flex: 1;
-        }
-        
-        /* Estilo do Input File */
-        .file-input-wrapper {
-            position: relative; overflow: hidden; display: inline-block;
-        }
-        .btn {
-            border: 1px solid #00ffcc; background: rgba(0, 255, 204, 0.1);
-            color: #00ffcc; padding: 10px 20px; cursor: pointer;
-            font-family: inherit; font-weight: bold; text-transform: uppercase;
-            transition: 0.3s;
-        }
-        .btn:hover { background: #00ffcc; color: #000; box-shadow: 0 0 15px #00ffcc; }
-        
-        input[type="file"] {
-            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer;
-        }
-
-        /* --- TERMINAL --- */
-        .terminal-window {
-            width: 90%; height: 70%; border: 1px solid #333;
-            background-color: rgba(10, 10, 10, 0.95);
-            display: flex; flex-direction: column; position: relative;
-        }
-        .header {
-            padding: 10px; background: #0f0f0f; border-bottom: 1px solid #333;
-            display: flex; justify-content: space-between; font-size: 0.8rem;
-        }
-        .log-container {
-            flex: 1; padding: 20px; overflow-y: auto;
-            font-size: 0.9rem; color: #aaddd6;
-        }
-        /* Scrollbar */
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-thumb { background: #333; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: var(--secondary); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+        .log { margin-bottom: 4px; word-break: break-all; }
+        .ts { color: var(--text-dim); margin-right: 10px; font-size: 0.8rem; }
+        .type-info { color: var(--text-main); }
+        .type-warn { color: #ffcc00; }
+        .type-error { color: #ff3333; text-shadow: 0 0 5px #ff0000; font-weight: bold; }
+        .type-success { color: #00ff66; }
+        .type-input { color: #aaa; font-style: italic; }
+
+        /* --- INPUT BAR (Pterodactyl Style) --- */
+        .command-bar {
+            background: var(--panel-bg);
+            border-top: 1px solid var(--secondary);
+            padding: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .cmd-prompt { margin-right: 10px; font-weight: bold; }
         
-        .log-entry { margin-bottom: 4px; word-wrap: break-word; }
-        .timestamp { color: #555; margin-right: 8px; }
-        .info { color: #aaddd6; }
-        .warn { color: #ffcc00; }
-        .error { color: #ff0055; }
-        .success { color: #00ff66; }
+        #cmdInput {
+            flex: 1; background: #000; border: 1px solid #333;
+            color: var(--primary); padding: 12px; font-family: inherit;
+            border-radius: 4px;
+        }
+        #cmdInput:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(255,0,51,0.2); }
+
+        /* --- SETTINGS MODAL --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(3px);
+            display: none; justify-content: center; align-items: center; z-index: 100;
+        }
+
+        .modal {
+            width: 500px; background: #0f0f0f; border: 1px solid var(--primary);
+            box-shadow: 0 0 30px rgba(255,0,51,0.2); padding: 20px;
+            border-radius: 5px; position: relative;
+        }
+
+        .modal h2 { margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab {
+            flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333;
+            color: #666; cursor: pointer; text-align: center;
+        }
+        .tab.active { border-color: var(--primary); color: var(--primary); background: rgba(255,0,51,0.1); }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.8rem; }
+        .form-input { width: 100%; padding: 10px; background: #000; border: 1px solid #333; color: white; }
+        
+        .checkbox-group { display: flex; align-items: center; gap: 10px; margin: 15px 0; cursor: pointer; }
+        .checkbox-group input { width: 16px; height: 16px; accent-color: var(--primary); }
+
+        .btn-action {
+            width: 100%; padding: 12px; background: var(--primary); color: #000;
+            border: none; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        .btn-action:hover { background: white; box-shadow: 0 0 15px white; }
+        
+        .close-modal { position: absolute; top: 15px; right: 15px; color: #555; cursor: pointer; font-size: 1.5rem; }
 
     </style>
 </head>
 <body>
 
-    <div class="control-panel">
-        <div class="file-input-wrapper btn">
-            ESCOLHER .ZIP
-            <input type="file" id="botFile" accept=".zip">
+    <header>
+        <div class="brand">RED PROTOCOL <span style="font-size:0.7em; color:#555;">:: V3.0</span></div>
+        <button class="btn-icon" onclick="openSettings()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        </button>
+    </header>
+
+    <div class="terminal-container" id="logs">
         </div>
-        <span id="fileName" style="font-size: 0.8rem; color: #555;">Nenhum arquivo</span>
-        
-        <input type="text" id="startCmd" placeholder="Comando de Início (ex: node index.js)" value="node index.js">
-        
-        <button class="btn" onclick="deployBot()">UPLOAD & START</button>
+
+    <div class="command-bar">
+        <span class="cmd-prompt">user@server:~$</span>
+        <input type="text" id="cmdInput" placeholder="Enviar comando para o console..." autocomplete="off">
     </div>
 
-    <div class="terminal-window">
-        <div class="header">
-            <span>SYSTEM MONITOR /// LIVE LOGS</span>
-            <span id="status">AGUARDANDO COMANDO...</span>
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+            <span class="close-modal" onclick="closeSettings()">&times;</span>
+            <h2>DEPLOY CONFIGURATION</h2>
+            
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('zip')">UPLOAD ZIP</div>
+                <div class="tab" onclick="switchTab('git')">GITHUB URL</div>
+            </div>
+
+            <div class="form-group">
+                <label>Comando de Início</label>
+                <input type="text" id="startCommand" class="form-input" value="node index.js" placeholder="ex: node index.js">
+            </div>
+
+            <label class="checkbox-group">
+                <input type="checkbox" id="installDeps" checked>
+                <span>Executar 'npm install' antes de iniciar?</span>
+            </label>
+
+            <div id="area-zip" class="deploy-area">
+                <div class="form-group">
+                    <label>Arquivo do Bot (.zip)</label>
+                    <input type="file" id="zipFile" class="form-input" accept=".zip" style="padding: 5px;">
+                </div>
+                <button class="btn-action" onclick="deployZip()">INICIAR UPLOAD</button>
+            </div>
+
+            <div id="area-git" class="deploy-area" style="display: none;">
+                <div class="form-group">
+                    <label>URL do Repositório Git (Público)</label>
+                    <input type="text" id="repoUrl" class="form-input" placeholder="https://github.com/usuario/repo.git">
+                </div>
+                <button class="btn-action" onclick="deployGit()">CLONAR & INICIAR</button>
+            </div>
+
         </div>
-        <div class="log-container" id="terminalLogs"></div>
     </div>
 
     <script>
         const socket = io();
-        const logContainer = document.getElementById('terminalLogs');
-        const fileInput = document.getElementById('botFile');
-        const statusSpan = document.getElementById('status');
+        const logDiv = document.getElementById('logs');
+        const cmdInput = document.getElementById('cmdInput');
 
-        // Atualiza nome do arquivo ao selecionar
-        fileInput.addEventListener('change', function() {
-            document.getElementById('fileName').innerText = this.files[0] ? this.files[0].name : "Nenhum arquivo";
-        });
-
-        // Recebe logs do servidor
+        // --- LOGIC DE SOCKET ---
         socket.on('log-message', (data) => {
-            const div = document.createElement('div');
-            div.className = 'log-entry';
-            div.innerHTML = `<span class="timestamp">[${data.time}]</span> <span class="${data.type}">${data.text}</span>`;
-            logContainer.appendChild(div);
-            logContainer.scrollTop = logContainer.scrollHeight;
+            const p = document.createElement('div');
+            p.className = `log type-${data.type}`;
+            p.innerHTML = `<span class="ts">[${data.time}]</span> ${data.text}`;
+            logDiv.appendChild(p);
+            logDiv.scrollTop = logDiv.scrollHeight;
         });
 
-        // Função de Upload
-        async function deployBot() {
-            const file = fileInput.files[0];
-            const cmd = document.getElementById('startCmd').value;
+        // --- ENVIO DE COMANDOS (Enter) ---
+        cmdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const cmd = cmdInput.value;
+                if(cmd.trim()) {
+                    socket.emit('terminal-input', cmd);
+                    cmdInput.value = '';
+                }
+            }
+        });
 
-            if (!file) return alert("Selecione um arquivo .zip!");
-            if (!cmd) return alert("Digite o comando de início!");
+        // --- MODAL LOGIC ---
+        function openSettings() { document.getElementById('settingsModal').style.display = 'flex'; }
+        function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
+        
+        function switchTab(mode) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.deploy-area').forEach(a => a.style.display = 'none');
+            
+            if(mode === 'zip') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('area-zip').style.display = 'block';
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('area-git').style.display = 'block';
+            }
+        }
+
+        // --- DEPLOY FUNCTIONS ---
+        async function deployZip() {
+            const file = document.getElementById('zipFile').files[0];
+            const startCmd = document.getElementById('startCommand').value;
+            const installDeps = document.getElementById('installDeps').checked;
+
+            if(!file) return alert('Selecione um arquivo ZIP.');
 
             const formData = new FormData();
-            formData.append('botFile', file);
-            formData.append('startCommand', cmd);
+            formData.append('file', file);
+            formData.append('startCommand', startCmd);
+            formData.append('installDeps', installDeps);
 
-            statusSpan.innerText = "ENVIANDO DADOS...";
-            statusSpan.style.color = "#ffcc00";
+            closeSettings();
+            await fetch('/deploy/zip', { method: 'POST', body: formData });
+        }
 
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    statusSpan.innerText = "BOT RODANDO";
-                    statusSpan.style.color = "#00ff66";
-                } else {
-                    statusSpan.innerText = "ERRO NO DEPLOY";
-                    statusSpan.style.color = "#ff0055";
-                    alert("Erro: " + result.error);
-                }
-            } catch (e) {
-                alert("Erro na conexão: " + e);
-            }
+        async function deployGit() {
+            const repoUrl = document.getElementById('repoUrl').value;
+            const startCmd = document.getElementById('startCommand').value;
+            const installDeps = document.getElementById('installDeps').checked;
+
+            if(!repoUrl) return alert('Insira a URL do Git.');
+
+            const body = JSON.stringify({ repoUrl, startCommand, installDeps });
+
+            closeSettings();
+            await fetch('/deploy/git', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: body 
+            });
         }
     </script>
 </body>
