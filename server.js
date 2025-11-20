@@ -6,8 +6,8 @@ const path = require('path');
 const fs = require('fs-extra');
 const { spawn } = require('child_process');
 const simpleGit = require('simple-git');
-const multer = require('multer');
-const AdmZip = require('adm-zip');
+const multer = require('multer'); 
+const AdmZip = require('adm-zip'); 
 
 // --- CONFIGURAÇÃO ---
 const BOT_DIR = path.join(__dirname, 'user_bot'); 
@@ -31,7 +31,7 @@ function addLog(type, text) {
     const log = { type, text, time: getTime() };
     if (logHistory.length > 100) logHistory.shift();
     io.emit('log-message', log);
-    console.log(`[${type}] ${text}`);
+    // console.log(`[${type}] ${text}`); // Mantenha para debug local
 }
 
 async function killBot() {
@@ -51,13 +51,12 @@ async function killBot() {
 function startBot(command) {
     addLog('success', `Iniciando Bot: ${command}`);
     
-    // Configuração para rodar o bot de forma independente
     currentBotProcess = spawn(command, {
         cwd: BOT_DIR, shell: true, detached: true, stdio: ['pipe', 'pipe', 'pipe']
     });
 
     currentBotProcess.stdout.on('data', d => addLog('info', d.toString().trim()));
-    currentBotProcess.stderr.on('data', d => addLog('error', d.toString().trim())); // Erros reais são stderr
+    currentBotProcess.stderr.on('data', d => addLog('error', d.toString().trim()));
     currentBotProcess.on('close', c => addLog('warn', `Bot desligou. Código: ${c}`));
     currentBotProcess.on('error', err => addLog('error', `Erro de execução: ${err.message}`));
 }
@@ -86,22 +85,26 @@ async function deployFlow(repoUrl, startCmd, installDeps) {
     try {
         await killBot();
         
-        addLog('warn', '--- INICIANDO INSTALAÇÃO DE BOT VIA GIT/PRESET ---');
+        addLog('warn', '--- INICIANDO INSTALAÇÃO DE BOT VIA GIT ---');
         addLog('info', 'Limpando diretório antigo...');
         await fs.emptyDir(BOT_DIR);
 
         addLog('info', `Clonando repositório: ${repoUrl}`);
+        // Clone para o BOT_DIR
         await simpleGit().clone(repoUrl, BOT_DIR); 
         addLog('success', 'Download concluído!');
 
         let finalCmd = startCmd || "node index.js";
         
-        // Lógica para detecção automática de comando de start
+        // Tenta descobrir o comando de start se não foi passado (melhoria)
         if (!startCmd && fs.existsSync(path.join(BOT_DIR, 'package.json'))) {
-             // Não podemos usar require() aqui sem cachebuster, vamos simplificar:
-             const pkgContent = await fs.readFile(path.join(BOT_DIR, 'package.json'), 'utf8');
-             const pkg = JSON.parse(pkgContent);
-             if (pkg.scripts && pkg.scripts.start) finalCmd = "npm start";
+             try {
+                 const pkgContent = await fs.readFile(path.join(BOT_DIR, 'package.json'), 'utf8');
+                 const pkg = JSON.parse(pkgContent);
+                 if (pkg.scripts && pkg.scripts.start) finalCmd = "npm start";
+             } catch(e) {
+                 addLog('warn', 'Não foi possível ler package.json para comando de start. Usando default.');
+             }
         }
 
         if (installDeps) {
@@ -118,22 +121,69 @@ async function deployFlow(repoUrl, startCmd, installDeps) {
 
 // --- ROTAS (API) ---
 
-// ROTA DEPLOY VIA GIT (BOTS PRONTOS e CUSTOMIZADO)
+// ROTA DEPLOY VIA GIT (Usada pelos BOTS PRONTOS e GIT CUSTOM)
 app.post('/deploy/git', (req, res) => {
     let { repoUrl, startCommand, installDeps } = req.body;
+    
     if (!repoUrl) return res.status(400).json({ error: 'URL vazia.' });
+
+    // Processo de Deploy em Background
     deployFlow(repoUrl, startCommand, installDeps);
+    
     res.json({ success: true, message: "Deploy iniciado. Acompanhe no terminal." });
 });
 
-// ROTA PARA LISTAR ARQUIVOS
+
+// ROTA DEPLOY VIA ZIP
+app.post('/deploy/zip', upload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+
+    // Note que installDeps e startCommand vêm como strings do formData
+    const { startCommand, installDeps } = req.body;
+    const zipPath = req.file.path;
+
+    try {
+        await killBot();
+        addLog('warn', '--- INICIANDO INSTALAÇÃO DE BOT VIA ZIP ---');
+        addLog('info', 'Limpando diretório antigo...');
+        await fs.emptyDir(BOT_DIR);
+        
+        const zip = new AdmZip(zipPath);
+        // Descompacta todos os arquivos para BOT_DIR
+        zip.extractAllTo(BOT_DIR, true);
+        addLog('success', 'Descompactação concluída!');
+
+        await fs.remove(zipPath); // Limpa o arquivo ZIP temporário
+        
+        const finalCmd = startCommand || "node index.js";
+        const doInstall = installDeps === 'true' || installDeps === true; // Verifica string ou booleano
+
+        if (doInstall) {
+             deployDependencies(finalCmd);
+        } else {
+            startBot(finalCmd);
+        }
+        
+        res.json({ success: true, message: "Deploy ZIP iniciado. Acompanhe no terminal." });
+
+    } catch (e) {
+        // Garantir que o temp file seja removido em caso de erro na descompactação
+        await fs.remove(zipPath).catch(() => {});
+        addLog('error', `FALHA CRÍTICA NO DEPLOY ZIP: ${e.message}`);
+        res.status(500).json({ error: `Erro no deploy ZIP: ${e.message}` });
+    }
+});
+
+
+// ROTA PARA LISTAR ARQUIVOS (Suporte a Navegação)
 app.get('/files/list', async (req, res) => {
     const requestedPath = req.query.path || '/';
+    // Normalização e segurança do caminho
     const relativePath = path.normalize(requestedPath.replace(/^\/|\/$/g, ''));
     const absolutePath = path.join(BOT_DIR, relativePath === '.' ? '' : relativePath);
     
     if (!absolutePath.startsWith(BOT_DIR)) {
-        return res.status(400).json({ error: 'Caminho inválido.' });
+        return res.status(400).json({ error: 'Caminho inválido ou fora do diretório do bot.' });
     }
 
     try {
@@ -161,20 +211,16 @@ app.post('/files/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
     
     const { currentPath } = req.body;
-    // O destino deve ser dentro do BOT_DIR
     const destDir = path.join(BOT_DIR, path.normalize(currentPath));
     const destPath = path.join(destDir, req.file.originalname);
-
+    
     try {
-        // Garantir que o diretório de destino exista
         await fs.ensureDir(destDir);
-        // Mover o arquivo
         await fs.move(req.file.path, destPath, { overwrite: true });
         res.json({ success: true });
     } catch (e) {
-        // Se falhar, tenta remover o arquivo temporário
         await fs.remove(req.file.path).catch(() => {});
-        res.status(500).json({ error: `Erro ao fazer upload: ${e.message}` });
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -195,41 +241,6 @@ app.delete('/files/delete', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
-
-
-// ROTA DE DEPLOY VIA ZIP (Mantida, mas não está no menu do HTML)
-app.post('/deploy/zip', upload.single('file'), async (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
-
-    const { startCommand, installDeps } = req.body;
-    const zipPath = req.file.path;
-
-    try {
-        await killBot();
-        addLog('warn', '--- INICIANDO INSTALAÇÃO DE BOT VIA ZIP ---');
-        await fs.emptyDir(BOT_DIR);
-        
-        const zip = new AdmZip(zipPath);
-        zip.extractAllTo(BOT_DIR, true);
-
-        await fs.remove(zipPath); 
-        
-        const finalCmd = startCommand || "node index.js";
-
-        if (installDeps === 'true' || installDeps === true) {
-             deployDependencies(finalCmd);
-        } else {
-            startBot(finalCmd);
-        }
-        
-        res.json({ success: true, message: "Deploy ZIP iniciado." });
-
-    } catch (e) {
-        addLog('error', `FALHA CRÍTICA NO DEPLOY ZIP: ${e.message}`);
-        res.status(500).json({ error: `Erro no deploy: ${e.message}` });
-    }
-});
-
 
 // --- SOCKET & LOGS ---
 io.on('connection', s => {
