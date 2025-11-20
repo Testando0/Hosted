@@ -1,7 +1,7 @@
 {
-  "name": "red-protocol-terminal",
-  "version": "3.0.0",
-  "description": "Bot Host C2 Red Theme",
+  "name": "red-protocol-mobile",
+  "version": "5.0.0",
+  "description": "C2 Bot Host Mobile Optimized",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
